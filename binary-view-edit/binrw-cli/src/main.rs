@@ -22,6 +22,10 @@ fn main() {
         "header" | "-h" => {
             println!("Header");
             print_header(filename.as_str());
+        },
+        "type" | "-t" => {
+        }
+        "metadata" | "-m" => {
         }
         _ => {
             println!("Command not recognized!");
@@ -55,9 +59,10 @@ fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> String {
 }
 
 fn print_header(filename: &str) {
+    // TODO: Read just the first few bytes instead of the whole file to parse the filetype and file header
     let data: Vec<u8> = fs::read(filename).expect(&format!("Could not open {filename}"));
     let header: Vec<u8> = data[0..4].to_vec();
-    let parsed_header = parse_hex_data(header, false);
+    let parsed_header = parse_hex_data(header, true);
     println!("{}", parsed_header);
 }
 
@@ -77,4 +82,12 @@ fn write_replace(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
 fn write_append(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
+}
+
+fn detect_file_type(filename: &str) {
+
+}
+
+fn get_file_metadata(filename: &str) {
+    let file_type = detect_file_type()
 }
