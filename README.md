@@ -1,10 +1,17 @@
-# To-Do
+# Active To-Do
+* Get file size in bytes
+  * Incorporate into a size command
+  * Incorporate into negative offsets for file read/write (not negative byte length, negative offsets)
+* Make a file detection algorithm from magic numbers at the start and (at least for jpgs) end of files
+* Add file write (with overwrite/splice options)
+* Add metadata parse (read/write) options (not to be confused with metadata in the Rust library, which would be useful here in differentiating symlinks/dirs/files).
+
+# Stuff to work on
 * Figure out how to keep targets in different directories out of .gitignore
 * Parse just the beginning, just the end, or both to figure out file types
 * Compare sequences of byte strings, not concatenated byte strings
 * Figure out strings, printing, string formatting in Rust
 * Add file and metadata processing
-
 
 # Planned features
 * Read all data
