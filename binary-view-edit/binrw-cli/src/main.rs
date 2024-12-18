@@ -229,32 +229,92 @@ fn write_insert(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
 }
 
+fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
+    let jpeg_start_bytes = vec!["ff".to_owned(), "d8".to_owned()];
+    let jpeg_end_bytes = vec!["ff".to_owned(), "d9".to_owned()];
+    // let first_two_bytes = parse_hex_data(read_bytes(filename, 0, 2), false);
+    // let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2), false);
+    let first_two_bytes = &file_id_info.first_two_bytes;
+    let last_two_bytes = &file_id_info.last_two_bytes;
+    println!("{:?}", *first_two_bytes);
+    println!("{:?}", *last_two_bytes);
+    println!("{}", *first_two_bytes == jpeg_start_bytes);
+    println!("{}", *last_two_bytes == jpeg_end_bytes);
+    println!("{}", *first_two_bytes == jpeg_start_bytes && *last_two_bytes == jpeg_end_bytes);
+    return *first_two_bytes == jpeg_start_bytes &&
+        *last_two_bytes == jpeg_end_bytes;
+}
+
+fn get_file_byte_info(filename: &str) -> FileIDInfo {
+    let first_four_bytes = parse_hex_data(read_bytes(filename, 0, 4), false);
+    let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2), false);
+    return FileIDInfo {
+        first_two_bytes: first_four_bytes[0..2].try_into().unwrap(),
+        first_four_bytes: first_four_bytes[0..4].try_into().unwrap(),
+        last_two_bytes: last_two_bytes[0..2].try_into().unwrap()
+    }
+}
+
+// enum FileType {
+//     JPG(&str),
+//     Unknown(`&str)
+// }
+
+#[derive(Debug)]
+struct FileByteInfo {
+    first_two_bytes: [u8; 2],
+    first_four_bytes: [u8; 4],
+    last_two_bytes: [u8; 2]
+}
+
+#[derive(Debug)]
+struct FileIDInfo {
+    first_two_bytes: Vec<String>,
+    first_four_bytes: Vec<String>,
+    last_two_bytes: Vec<String>
+}
+
 fn detect_file_type(filename: &str) -> &str {
 // //     let header = parse_header(filename, false)[0..2];
 // //     println!("{}", header);
-    let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2));
-    println!("{:?}", parse_hex_data(last_two_bytes, false));
-//     let file_type = match header {
-//         // https://stackoverflow.com/questions/4550296/how-to-identify-contents-of-a-byte-is-a-jpeg
-//         vec!["ff", "d8"] => "jpg" /* start ff d8 end ff d9 */,
-//         /* BMP : 42 4D
-// JPG : FF D8 FF EO ( Starting 2 Byte will always be same)
-// PNG : 89 50 4E 47
-// GIF : 47 49 46 38*/
-// /*
-// When a JPG file uses JFIF or EXIF, The signature is different :
+    // let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2));
+    // println!("{:?}", parse_hex_data(last_two_bytes, false));
+    // detect_jpg(filename);
+    let id_info = get_file_byte_info(filename);
+    println!("{:?}", id_info);
+        // https://stackoverflow.com/questions/4550296/how-to-identify-contents-of-a-byte-is-a-jpeg
+        /* start ff d8 end ff d9 */
+        /* BMP : 42 4D
+JPG : FF D8 FF EO ( Starting 2 Byte will always be same)
+PNG : 89 50 4E 47
+GIF : 47 49 46 38*/
+/*
+When a JPG file uses JFIF or EXIF, The signature is different :
 
-// Raw  : FF D8 FF DB  
-// JFIF : FF D8 FF E0  
-// EXIF : FF D8 FF E1 */
-//         _ => "unknown"
-//     };
-//     return file_type;
+Raw  : FF D8 FF DB  
+JFIF : FF D8 FF E0  
+EXIF : FF D8 FF E1 */
+let png_bytes = get_owned_str_vec(vec!["89", "50", "4e", "47"]);
+
+    let file_type: &str = match id_info {
+        id_info if detect_jpg(&id_info) => {return "jpg"},
+        id_info if id_info.first_four_bytes == png_bytes => {return "png"}
+        _ => "unknown",
+    };
+    // return file_type;
     return "unknown";
 }
 
+fn get_owned_str_vec(array: Vec<&str>) -> Vec<String> {
+    let mut vec: Vec<String> = Vec::new();
+    for element in array {
+        vec.push(element.to_owned())
+    }
+    return vec;
+}
+
 fn get_file_metadata(filename: &str) {
-    let mut file = File::open(filename).unwrap();
+    let file = File::open(filename).unwrap();
     // let file_type = detect_file_type(filename);
     // println!("{}", format!("TODO: READ METADATA FOR {file_type}"));
     let metadata = file.metadata().unwrap();
