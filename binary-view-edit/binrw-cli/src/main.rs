@@ -23,6 +23,29 @@ fn main() {
     let filename = &args[2];
 
     // TODO: Add tests.
+    // Tests:
+    // Check correctness and edge cases.
+    // ****Read****
+    // Negative offset to eof (tested manually to work.. add a case for an easy pass)
+    // Large positive offset (larger than i64) to eof
+    // Two negative offsets going the correct direction (currently failing)
+    // Two negative offsets going in the incorrect direction should fail
+    // Two large positive offsets (each larger than i64)
+    // Negative and large positive offsets
+    // Large positive and negative offsets
+    // ****Write****
+    // Test same offsets as read (negative to eof, large positive to eof,two negative negative cases, negative large positive, large positive negative, large positive large positive)
+    // Test each write operation with each offset (overwrite, splice)
+    // Data write verify mode
+    // ****Header****
+    // Test on range of files
+    // ****Type****
+    // Test on range of files
+    // ****Size****
+    // Test on range of files
+    // ****Metadata****
+    // Add file-specific and metadata-specific metadata checks as metadata functionality is added. Test read, write, write-verify.
+    // Metadata write verify mode
     // TODO: Read breaks with negative offsets when not hitting the "eof" true case on the if statement.
     match command.as_str() {
         "read" | "-r" => {
@@ -202,15 +225,15 @@ fn write_replace(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
 }
 
-fn write_append(start_byte_inclusive: i32, end_byte_inclusive: i32) {
+fn write_insert(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
 }
 
 fn detect_file_type(filename: &str) -> &str {
 // //     let header = parse_header(filename, false)[0..2];
 // //     println!("{}", header);
-//     let last_two_bytes = read_range_i64_negative_start(filename, -2)
-//     println!("{}", last_two_bytes);
+    let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2));
+    println!("{:?}", parse_hex_data(last_two_bytes, false));
 //     let file_type = match header {
 //         // https://stackoverflow.com/questions/4550296/how-to-identify-contents-of-a-byte-is-a-jpeg
 //         vec!["ff", "d8"] => "jpg" /* start ff d8 end ff d9 */,
