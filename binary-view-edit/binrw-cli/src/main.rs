@@ -22,14 +22,29 @@ fn main() {
     }
     let filename = &args[2];
 
+    // TODO: Add tests.
+    // TODO: Read breaks with negative offsets when not hitting the "eof" true case on the if statement.
     match command.as_str() {
         "read" | "-r" => {
             println!("Read");
             let aux_arg1 = &args[3];
             let aux_arg2 = &args[4];
-            let data = read_range(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<u64>().unwrap());
-            // let data = read_range(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<usize>().unwrap());
-            println!("{}", parse_hex_data(data, false).join(" "));
+            // Try to parse as a u64 and use absolute units when given
+            // Try to parse as i64 when negative units are given
+            // Either specify a range or byte offset. This should be set with a flag. Settle on a reasonable default.
+            // Absolute units and offsets should be able to be mixed in a single command
+            // "eof" or "EOf" should work for the second read/write arg to read/write to the end of the file (whether in overwrite or splice write mode)
+            if aux_arg2 == "eof" {
+                // Parses for offsets
+                let data = read_to_end_i64_negative_offsets(filename, aux_arg1.parse::<i64>().unwrap());
+                println!("{}", parse_hex_data(data, false).join(" "));
+            } else {
+                // TODO: Doesn't currently parse for offsets or do smart arg parsing
+                let data = read_range(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<u64>().unwrap());
+                // let data = read_bytes(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<usize>().unwrap());
+                println!("{}", parse_hex_data(data, false).join(" "));
+
+            }
         },
         "write" | "-w" => {
             println!("Write");
@@ -40,7 +55,8 @@ fn main() {
         },
         "type" | "-t" => {
             println!("Type (Filetype):");
-            println!("{}", detect_file_type(filename.as_str()));
+            let file_type = detect_file_type(filename.as_str());
+            println!("{}", file_type);
         },
         "size" | "-s" => {
             println!("Size");
@@ -108,21 +124,78 @@ fn read_bytes(filename: &str, start_byte_inclusive: u64, num_bytes: usize) -> Ve
 
 // TODO: WIP
 fn read_range(filename: &str, start_byte_inclusive: u64, end_byte_inclusive: u64) -> Vec<u8> {
+    let mut file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
     let size = metadata.len();
     let start_offset = match start_byte_inclusive {
-        (start_byte_inclusive >= 0) => start_byte_inclusive,
+        start_byte_inclusive if start_byte_inclusive >= 0 => start_byte_inclusive,
         _ => start_byte_inclusive+size
-    }
+    };
     let end_offset = match end_byte_inclusive {
-        end_byte_inclusive >= 0 => end_byte_inclusive,
+        end_byte_inclusive if end_byte_inclusive >= 0 => start_byte_inclusive,
         _ => end_byte_inclusive+size
-    }
+    };
     if end_offset <= start_offset  {
         panic!("Error in read_range: End byte position cannot be before the start byte position.")
     }
     let buffer_size = start_offset - end_offset + 1;
     return read_bytes(filename, start_offset, buffer_size.try_into().unwrap());
+}
+
+fn read_to_end(filename: &str, start_byte_inclusive: u64) -> Vec<u8> {
+    let mut file = File::open(filename).unwrap();
+    let metadata = file.metadata().unwrap();
+    let size = metadata.len();
+    return read_range(filename, start_byte_inclusive, size-1); // Note size-1. It's size+1 bc I wanted inclusive ranges... I'm off by 1 somewhere???
+}
+
+fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -> Vec<u8> {
+    let mut file = File::open(filename).unwrap();
+    let metadata = file.metadata().unwrap();
+    let size = metadata.len();
+    return read_range_i64_negative_start(filename, start_byte_inclusive, size-1);
+}
+
+// TODO: WIP. Correctly handle both positive and negative ranges, either one or the other or also mixed. Figure out good type definitions. Convert types correctly. 
+// fn read_range_i64_negative_offsets(filename: &str, start_byte_inclusive: isize, end_byte_inclusive: isize) -> Vec<u8> {
+//     let mut file = File::open(filename).unwrap();
+//     let metadata = file.metadata().unwrap();
+//     let size = metadata.len();
+//     let start_offset: u64 = match start_byte_inclusive {
+//         start_byte_inclusive if start_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
+//         _ => u64::try_from(start_byte_inclusive+size).unwrap()
+//     };
+//     let end_offset: u64 = match end_byte_inclusive {
+//         end_byte_inclusive if end_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
+//         _ => u64::try_from(end_byte_inclusive+size).unwrap()
+//     };
+//     if end_offset <= start_offset  {
+//         panic!("Error in read_range: End byte position cannot be before the start byte position.")
+//     }
+//     TODO: Bugged? Look at read_range_i64_negative_start... it panicked w/ this and I reversed it to end_offset - start_offset. See the check above. The end_offset should always be greater.
+//     let buffer_size = start_offset - end_offset + 1;
+//     return read_bytes(filename, start_offset.try_into().unwrap(), buffer_size.try_into().unwrap());
+// }
+
+// TODO: WIP
+fn read_range_i64_negative_start(filename: &str, start_byte_inclusive: i64, end_byte_inclusive: u64) -> Vec<u8> {
+    let mut file = File::open(filename).unwrap();
+    let metadata = file.metadata().unwrap();
+    let size = metadata.len();
+    let start_offset: u64 = match start_byte_inclusive {
+        start_byte_inclusive if start_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
+        _ => u64::try_from(isize::try_from(start_byte_inclusive).unwrap()+isize::try_from(size).unwrap()).unwrap()
+    };
+    let end_offset: u64 = end_byte_inclusive;
+    // let end_offset: u64 = match end_byte_inclusive {
+    //     end_byte_inclusive if end_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
+    //     _ => u64::try_from(end_byte_inclusive).unwrap()+size
+    // };
+    if end_offset <= start_offset  {
+        panic!("Error in read_range: End byte position cannot be before the start byte position.")
+    }
+    let buffer_size = end_offset - start_offset + 1;
+    return read_bytes(filename, start_offset.try_into().unwrap(), buffer_size.try_into().unwrap());
 }
 
 fn write_replace(start_byte_inclusive: i32, end_byte_inclusive: i32) {
@@ -134,8 +207,10 @@ fn write_append(start_byte_inclusive: i32, end_byte_inclusive: i32) {
 }
 
 fn detect_file_type(filename: &str) -> &str {
-//     let header = parse_header(filename, false)[0..2];
-//     println!("{}", header);
+// //     let header = parse_header(filename, false)[0..2];
+// //     println!("{}", header);
+//     let last_two_bytes = read_range_i64_negative_start(filename, -2)
+//     println!("{}", last_two_bytes);
 //     let file_type = match header {
 //         // https://stackoverflow.com/questions/4550296/how-to-identify-contents-of-a-byte-is-a-jpeg
 //         vec!["ff", "d8"] => "jpg" /* start ff d8 end ff d9 */,
@@ -161,6 +236,6 @@ fn get_file_metadata(filename: &str) {
     // println!("{}", format!("TODO: READ METADATA FOR {file_type}"));
     let metadata = file.metadata().unwrap();
     let size = metadata.len();
-    println!("{:?}", file_type);
+    // println!("{:?}", file_type);
     println!("{}", size);
 }
