@@ -155,13 +155,15 @@ fn read_range(filename: &str, start_byte_inclusive: u64, end_byte_inclusive: u64
         _ => start_byte_inclusive+size
     };
     let end_offset = match end_byte_inclusive {
-        end_byte_inclusive if end_byte_inclusive >= 0 => start_byte_inclusive,
+        end_byte_inclusive if end_byte_inclusive >= 0 => end_byte_inclusive,
         _ => end_byte_inclusive+size
     };
     if end_offset <= start_offset  {
+        println!("{}", start_offset);
+        println!("{}", end_offset);
         panic!("Error in read_range: End byte position cannot be before the start byte position.")
     }
-    let buffer_size = start_offset - end_offset + 1;
+    let buffer_size = end_offset - start_offset;
     return read_bytes(filename, start_offset, buffer_size.try_into().unwrap());
 }
 
@@ -236,11 +238,11 @@ fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
     // let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2), false);
     let first_two_bytes = &file_id_info.first_two_bytes;
     let last_two_bytes = &file_id_info.last_two_bytes;
-    println!("{:?}", *first_two_bytes);
-    println!("{:?}", *last_two_bytes);
-    println!("{}", *first_two_bytes == jpeg_start_bytes);
-    println!("{}", *last_two_bytes == jpeg_end_bytes);
-    println!("{}", *first_two_bytes == jpeg_start_bytes && *last_two_bytes == jpeg_end_bytes);
+    // println!("{:?}", *first_two_bytes);
+    // println!("{:?}", *last_two_bytes);
+    // println!("{}", *first_two_bytes == jpeg_start_bytes);
+    // println!("{}", *last_two_bytes == jpeg_end_bytes);
+    // println!("{}", *first_two_bytes == jpeg_start_bytes && *last_two_bytes == jpeg_end_bytes);
     return *first_two_bytes == jpeg_start_bytes &&
         *last_two_bytes == jpeg_end_bytes;
 }
@@ -295,10 +297,29 @@ Raw  : FF D8 FF DB
 JFIF : FF D8 FF E0  
 EXIF : FF D8 FF E1 */
 let png_bytes = get_owned_str_vec(vec!["89", "50", "4e", "47"]);
+let gif_bytes = get_owned_str_vec(vec!["47", "49", "46", "38"]);
+let bmp_bytes = get_owned_str_vec(vec!["42", "4d"]);
+let exe_bytes = get_owned_str_vec(vec!["4d", "5a"]);
+// java class files: cafebabe or cafed00d
+let java_bytecode_one = "cafebabe";
+let java_bytecode_two = "cafed00d";
+//parse_hex_data(read_bytes(filename, 0, 4), false).join("");
+// https://en.wikipedia.org/wiki/Magic_number_(programming)#In_files
+// midi: ASCII code for MThd (MIDI Track header): 4d 54 68 64 followed by more metadata
+// unix or linux scripts may start with shebang ("#!", 23, 21, followed by the path to an interpreter, if the interpreter is likely to be different)
+// elf executables start with 7f followed by "ELF" (7f 45 4c 46)
+// PDF "%PDF" hex 25 50 44 46
+// DOS MZ executables and EXE stub of microsoft windows PE "MZ" (4d 5a)
+// ZIP file PK<3club (50 4b 03 04)
+// 7z file (37 7a bc af 27 1c)
+// println!("Java bytecode: {}", java_bytecode);
 
     let file_type: &str = match id_info {
         id_info if detect_jpg(&id_info) => {return "jpg"},
-        id_info if id_info.first_four_bytes == png_bytes => {return "png"}
+        id_info if id_info.first_four_bytes == png_bytes => {return "png"},
+        id_info if id_info.first_four_bytes == gif_bytes => {return "gif"},
+        id_info if id_info.first_two_bytes == bmp_bytes => {return "bmp"},
+        id_info if id_info.first_two_bytes == exe_bytes => {return "exe"}
         _ => "unknown",
     };
     // return file_type;
