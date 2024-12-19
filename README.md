@@ -1,4 +1,5 @@
 # Active To-Do
+* Add quadruple write test case and fix bug (try writing hello and it breaks after two times)
 * CLI args and parsing
 * Testing
 * ~~Get file size in bytes~~

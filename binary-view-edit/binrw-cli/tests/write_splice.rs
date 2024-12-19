@@ -51,4 +51,15 @@ mod write_splice_tests {
     fn write_verify() {
         assert_eq!(4, 4);
     }
+
+    // TODO: WRITE THIS FIRST
+    #[test]
+    fn quadruple_splice_hello_to_front_test() {
+        assert_eq!(4, 4);
+    }
+    // TODO: WRITE THIS NEXT
+    #[test]
+    fn quadruple_splice_hello_to_eof_test() {
+        assert_eq!(4, 4);
+    }
 }

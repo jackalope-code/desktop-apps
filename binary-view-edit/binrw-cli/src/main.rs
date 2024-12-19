@@ -74,8 +74,8 @@ fn main() {
             println!("Write");
             let aux_arg1 = &args[3];
             let aux_arg2 = &args[4];
-            write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
-            // write_insert(filename, aux_arg1.parse::<usize>().unwrap(), aux_arg2.to_string())
+            // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
+            write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
         "header" | "-h" => {
             println!("Header");
@@ -259,16 +259,24 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     // let buf = read_bytes_file(&file, start_byte_inclusive, data.len())
     let metadata = file.metadata().unwrap();
     let file_size = metadata.len();
-    let buf_size: u64 = file_size - start_byte_inclusive - (data.len() as u64); // Shouldn't be <0 (I hope)
-    let mut buf = vec![0u8; buf_size.try_into().unwrap()];
-    let read_size = file.read_to_end(&mut buf).unwrap();
-    println!("Read {} bytes starting from {}", read_size, start_byte_inclusive);
-    println!("Seek to {}", start_byte_inclusive);
-    file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
-    println!("Write data to insert at {} bytes", data.as_bytes().len());
-    file.write(data.as_bytes());
-    println!("Write remaining buf: {:?}", &buf);
-    file.write(&buf);
+    // let should_append_file_data = file_size == 0;
+
+    if file_size > 0 {
+        let buf_size: u64 = file_size - start_byte_inclusive - (data.len() as u64); // Shouldn't be <0 (I hope)
+        let mut buf = vec![0u8; buf_size.try_into().unwrap()];
+        let read_size = file.read_to_end(&mut buf).unwrap();
+        println!("Read {} bytes starting from {}", read_size, start_byte_inclusive);
+        println!("Seek to {}", start_byte_inclusive);
+        file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
+        println!("Write data to insert at {} bytes", data.as_bytes().len());
+        file.write(data.as_bytes());
+        // if should_append_file_data {
+        println!("Write remaining buf: {:?}", &buf);
+        file.write(&buf);
+    } else {
+        file.write(data.as_bytes());
+    }
+    // }
 }
 
 fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
