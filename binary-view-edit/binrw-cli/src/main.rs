@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::io::Write;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -15,9 +16,9 @@ fn main() {
     
     let command = &args[1];
 
-    if !(command != "read" && args.len() == 3) && !(command == "read" && args.len() == 5) {
+    if !(command != "read" && args.len() == 3) && !(command == "read" && args.len() == 5) && !(command == "write" && args.len() == 5) {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
-        println!("{}", args.len());
+        println!("{} {}", args.len(), command);
         std::process::exit(1);
     }
     let filename = &args[2];
@@ -71,6 +72,9 @@ fn main() {
         },
         "write" | "-w" => {
             println!("Write");
+            let aux_arg1 = &args[3];
+            let aux_arg2 = &args[4];
+            write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
         "header" | "-h" => {
             println!("Header");
@@ -223,11 +227,13 @@ fn read_range_i64_negative_start(filename: &str, start_byte_inclusive: i64, end_
     return read_bytes(filename, start_offset.try_into().unwrap(), buffer_size.try_into().unwrap());
 }
 
-fn write_replace(start_byte_inclusive: i32, end_byte_inclusive: i32) {
-
+fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
+    let mut file = File::open(filename).unwrap();
+    let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
+    fs::write(filename, data);
 }
 
-fn write_insert(start_byte_inclusive: i32, end_byte_inclusive: i32) {
+fn write_insert(filename: &str, start_byte_inclusive: i32, end_byte_inclusive: i32) {
 
 }
 
@@ -322,8 +328,7 @@ let java_bytecode_two = "cafed00d";
         id_info if id_info.first_two_bytes == exe_bytes => {return "exe"}
         _ => "unknown",
     };
-    // return file_type;
-    return "unknown";
+    return file_type;
 }
 
 fn get_owned_str_vec(array: Vec<&str>) -> Vec<String> {
