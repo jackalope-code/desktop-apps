@@ -1,11 +1,13 @@
 # Active To-Do
+* CLI args and parsing
+* Testing
 * ~~Get file size in bytes~~
   * Incorporate into a size command
   * Incorporate into negative offsets for file read/write (not negative byte length, negative offsets)
 * ~~Make a file detection algorithm from magic numbers at the start and (at least for jpgs) end of files~~
 * Add file write (with overwrite/splice options)
 * Add metadata parse (read/write) options (not to be confused with metadata in the Rust library, which would be useful here in differentiating symlinks/dirs/files).
-* Fill out testing and documentation
+* Review and document
 
 # Stuff to work on
 * Figure out how to keep targets in different directories out of .gitignore
