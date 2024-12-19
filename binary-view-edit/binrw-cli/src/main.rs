@@ -74,7 +74,8 @@ fn main() {
             println!("Write");
             let aux_arg1 = &args[3];
             let aux_arg2 = &args[4];
-            write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
+            // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
+            write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
         "header" | "-h" => {
             println!("Header");
@@ -144,6 +145,23 @@ fn read_binary_file_contents(filename: &str) {
 fn read_bytes(filename: &str, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
     let mut buffer = vec![0u8; num_bytes];
     let mut file = File::open(filename).unwrap();
+    let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
+    let _ = file.read_exact(&mut buffer);
+    return buffer;
+}
+
+// Errors reading empty values into buf from read_exact. Buf should be truncated at file size.
+fn read_bytes_file(mut file: &File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
+    let metadata = file.metadata().unwrap();
+    let file_size = metadata.len();
+    let buffer_size;
+    if num_bytes > file_size.try_into().unwrap()  {
+        buffer_size = file_size;
+    } else {
+        buffer_size = num_bytes.try_into().unwrap();
+    }
+    let mut buffer = vec![0u8; buffer_size.try_into().unwrap()];
+    // let mut file = File::open(filename).unwrap();
     let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
     let _ = file.read_exact(&mut buffer);
     return buffer;
@@ -233,8 +251,24 @@ fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
     fs::write(filename, data);
 }
 
-fn write_insert(filename: &str, start_byte_inclusive: i32, end_byte_inclusive: i32) {
-
+fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
+    let mut file = File::options().read(true).write(true).open(filename).unwrap();
+    // let seekable = file.seek(SeekFrom::Start(start_byte_inclusive+1));
+    println!("Opening file for write_insert");
+    // println!("Planning to read {} bytes, starting from {}", data.len(), start_byte_inclusive);
+    // let buf = read_bytes_file(&file, start_byte_inclusive, data.len());
+    let metadata = file.metadata().unwrap();
+    let file_size = metadata.len();
+    let buf_size = file_size - start_byte_inclusive - data.len(); // Shouldn't be 0 (I hope)
+    let mut buf = [0u8; buf_size];
+    let read_size = file.read_to_end(&buf).unwrap();
+    println!("Read {} bytes starting from {}", read_size, start_byte_inclusive);
+    println!("Seek to {}", start_byte_inclusive);
+    file.seek(SeekFrom::Start(start_byte_inclusive));
+    println!("Write data to insert at {} bytes", data.as_bytes().len());
+    file.write(data.as_bytes());
+    println!("Write remaining buf: {:?}", &buf);
+    file.write(&buf);
 }
 
 fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
