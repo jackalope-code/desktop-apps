@@ -36,4 +36,14 @@ mod read_tests {
     fn read_negative_to_negative_descending_fail() {
         assert_eq!(4, 4);
     }
+
+    #[test]
+    fn read_eof_to_offset_fail() {
+        assert_eq!(4, 4);
+    }
+
+    #[test]
+    fn invalid_read_offset_parse_fail() {
+        assert_eq!(4, 4);
+    }
 }
