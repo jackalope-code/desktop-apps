@@ -297,6 +297,23 @@ fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
         *last_two_bytes == jpeg_end_bytes;
 }
 
+fn detect_javac(file_id_info: &FileIDInfo) -> bool {
+    let java_bytecode_one = "cafebabe";
+    let java_bytecode_two = "cafed00d";
+    let bytecode_str = file_id_info.first_four_bytes.join("");
+    // let is_class_file = match bytecode_str {
+    //     java_bytecode_one => true,
+    //     java_bytecode_two => true,
+    //     _ => false
+    // };
+    // return is_class_file;
+    if bytecode_str == java_bytecode_one || bytecode_str == java_bytecode_two {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 fn get_file_byte_info(filename: &str) -> FileIDInfo {
     let first_four_bytes = parse_hex_data(read_bytes(filename, 0, 4), false);
     let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2), false);
@@ -351,8 +368,7 @@ let gif_bytes = get_owned_str_vec(vec!["47", "49", "46", "38"]);
 let bmp_bytes = get_owned_str_vec(vec!["42", "4d"]);
 let exe_bytes = get_owned_str_vec(vec!["4d", "5a"]);
 // java class files: cafebabe or cafed00d
-let java_bytecode_one = "cafebabe";
-let java_bytecode_two = "cafed00d";
+
 //parse_hex_data(read_bytes(filename, 0, 4), false).join("");
 // https://en.wikipedia.org/wiki/Magic_number_(programming)#In_files
 // midi: ASCII code for MThd (MIDI Track header): 4d 54 68 64 followed by more metadata
@@ -370,6 +386,7 @@ let java_bytecode_two = "cafed00d";
         id_info if id_info.first_four_bytes == gif_bytes => {return "gif"},
         id_info if id_info.first_two_bytes == bmp_bytes => {return "bmp"},
         id_info if id_info.first_two_bytes == exe_bytes => {return "exe"}
+        id_info if detect_javac(&id_info) => {return "class"}
         _ => "unknown",
     };
     return file_type;

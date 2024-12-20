@@ -28,7 +28,8 @@ mod file_id_tests {
     }
     
     #[test]
-    fn id_javac() {
+    fn id_class() {
+        // cargo run type test/NoOp.class
         assert_eq!(4, 4);
     }
 }
