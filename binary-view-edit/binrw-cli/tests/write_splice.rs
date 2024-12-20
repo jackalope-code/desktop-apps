@@ -1,6 +1,7 @@
 use std::process::Command;
 use std::fs::File;
 use std::path::Path;
+use std::path;
 use std::fs;
 
 #[cfg(test)]
@@ -67,38 +68,47 @@ mod write_splice_tests {
         assert_eq!(4, 3);
     }
 
-    // TODO: WRITE THIS FIRST
-    #[test]
-    fn quadruple_splice_hello_to_front_test() {
-        let test_output_file_path = Path::new("hello.test.txt");
-        fn write_hello_once(print_output: bool) -> String {
-            let output = Command::new("./target/debug/binrw-cli.exe")
-                /* TODO: Issues setting args from variables */
-                .args(["write", "hello.test.txt", "0", "hello"])
-                .output()
-                .expect("Failed to execute binrw-cli.");
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if print_output {
-                println!("STDOUT: {}", stdout);
-                println!("STDERR: {}", stderr);
-            }
-            return stdout.to_string();
-        }
+    fn create_empty_test_file_from_str(filename: &str) -> &Path {
+        let test_output_file_path = Path::new(filename);
+
         // Check if the test output file exists, delete it if it does.
         if test_output_file_path.exists() {
             fs::remove_file(test_output_file_path);
         }
-        // Create new empty test file once before looping.
+        // Create new empty test file.
         {
             let f = File::create(test_output_file_path);
         }
-        // TODO: Check file once every time after running write_hello_once, for a total of four times.
+        return test_output_file_path;
+    }
+
+    fn write_hello_once(path_str: &str, position: &str, print_output: bool) -> String {
+        let output = Command::new("./target/debug/binrw-cli.exe")
+            /* TODO: Issues setting args from variables */
+            .arg("write")
+            .arg(path_str)
+            .arg(position)
+            .arg("hello")
+            .output()
+            .expect("Failed to execute binrw-cli.");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if print_output {
+            println!("STDOUT: {}", stdout);
+            println!("STDERR: {}", stderr);
+        }
+        return stdout.to_string();
+    }
+
+    #[test]
+    fn quadruple_splice_hello_to_front_test() {
+        let test_output_file_path = create_empty_test_file_from_str("hello_prepend_splice.test.txt");
+
         let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
         // let actual_outputs: Vec<&str> = Vec::new();
         println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
         for i in 0..4 {
-            write_hello_once(true);
+            write_hello_once(test_output_file_path.to_str().unwrap(), "0", true);
             let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
             // TODO: String lifetime issue idk
             // actual_outputs.push(&data);
@@ -108,10 +118,17 @@ mod write_splice_tests {
         // assert_eq!(expected_outputs, actual_outputs);
     }
 
-    // TODO: WRITE THIS NEXT
-    #[ignore]
     #[test]
     fn quadruple_splice_hello_to_eof_test() {
-        assert_eq!(4, 3);
+        let test_output_file_path = create_empty_test_file_from_str("hello_eof_splice.test.txt");
+
+        let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
+        println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
+        for i in 0..4 {
+            write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
+            let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
+            println!("READ: {} | i={}", data, i);
+            assert_eq!(data, expected_outputs[i]);
+        }
     }
 }
