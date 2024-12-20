@@ -7,6 +7,39 @@ use std::fs;
 #[cfg(test)]
 mod write_splice_tests {
     use super::*;
+    
+    // TODO: Add a toggle param to make the file self-delete with RCs
+    fn create_empty_test_file_from_str(filename: &str) -> &Path {
+        let test_output_file_path = Path::new(filename);
+
+        // Check if the test output file exists, delete it if it does.
+        if test_output_file_path.exists() {
+            fs::remove_file(test_output_file_path);
+        }
+        // Create new empty test file.
+        {
+            let f = File::create(test_output_file_path);
+        }
+        return test_output_file_path;
+    }
+
+    fn write_hello_once(path_str: &str, position: &str, print_output: bool) -> String {
+        let output = Command::new("./target/debug/binrw-cli.exe")
+            /* TODO: Issues setting args from variables */
+            .arg("write")
+            .arg(path_str)
+            .arg(position)
+            .arg("hello")
+            .output()
+            .expect("Failed to execute binrw-cli.");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if print_output {
+            println!("STDOUT: {}", stdout);
+            println!("STDERR: {}", stderr);
+        }
+        return stdout.to_string();
+    }
 
     #[ignore]
     #[test]
@@ -68,37 +101,6 @@ mod write_splice_tests {
         assert_eq!(4, 3);
     }
 
-    fn create_empty_test_file_from_str(filename: &str) -> &Path {
-        let test_output_file_path = Path::new(filename);
-
-        // Check if the test output file exists, delete it if it does.
-        if test_output_file_path.exists() {
-            fs::remove_file(test_output_file_path);
-        }
-        // Create new empty test file.
-        {
-            let f = File::create(test_output_file_path);
-        }
-        return test_output_file_path;
-    }
-
-    fn write_hello_once(path_str: &str, position: &str, print_output: bool) -> String {
-        let output = Command::new("./target/debug/binrw-cli.exe")
-            /* TODO: Issues setting args from variables */
-            .arg("write")
-            .arg(path_str)
-            .arg(position)
-            .arg("hello")
-            .output()
-            .expect("Failed to execute binrw-cli.");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if print_output {
-            println!("STDOUT: {}", stdout);
-            println!("STDERR: {}", stderr);
-        }
-        return stdout.to_string();
-    }
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
