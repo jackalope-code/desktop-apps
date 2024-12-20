@@ -262,13 +262,16 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     // let should_append_file_data = file_size == 0;
 
     if file_size > 0 {
-        let buf_size: u64 = file_size - start_byte_inclusive - (data.len() as u64); // Shouldn't be <0 (I hope)
+        let buf_size: u64 = file_size - start_byte_inclusive; // - (data.len() as u64); // Shouldn't be <0 (I hope)
+        println!("BUF SIZE: {}", buf_size);
         let mut buf = vec![0u8; buf_size.try_into().unwrap()];
         let read_size = file.read_to_end(&mut buf).unwrap();
-        println!("Read {} bytes starting from {}", read_size, start_byte_inclusive);
+        println!("Read {} bytes starting from {}. File size {}.", read_size, start_byte_inclusive, file_size);
+        println!("Buffer size {}", buf.len());
         println!("Seek to {}", start_byte_inclusive);
         file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
         println!("Write data to insert at {} bytes", data.as_bytes().len());
+        println!("\"{:?}\"", data.as_bytes());
         file.write(data.as_bytes());
         // if should_append_file_data {
         println!("Write remaining buf: {:?}", &buf);
