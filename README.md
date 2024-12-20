@@ -1,3 +1,13 @@
+# Install
+* git clone https://github.com/jackalope-code/desktop-apps
+* cd binary-view-edit/binrw-cli
+* cargo install
+* cargo run
+
+# Test
+* cd into project directory and install (see above)
+* cargo test
+
 # Active To-Do
 * Add quadruple write test case and fix bug (try writing hello and it breaks after two times)
 * CLI args and parsing
