@@ -57,9 +57,30 @@ mod write_overwrite_tests {
     fn check_write_overwrite() {
 
     }
+    
     #[ignore]
     #[test]
     fn check_write_overwrite_from_file() {
+
+    }
+    #[ignore]
+    #[test]
+    fn ignore_existing_file_by_default() {
+
+    }
+    #[ignore]
+    #[test]
+    fn edit_existing_file_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn save_edit_as_copy_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn create_new_file_with_flag() {
 
     }
 }

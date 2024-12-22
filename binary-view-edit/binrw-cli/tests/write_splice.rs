@@ -147,4 +147,30 @@ mod write_splice_tests {
         }
     }
 
+    #[ignore]
+    #[test]
+    fn check_write_overwrite_from_file() {
+
+    }
+    #[ignore]
+    #[test]
+    fn ignore_existing_file_by_default() {
+
+    }
+    #[ignore]
+    #[test]
+    fn edit_existing_file_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn save_edit_as_copy_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn create_new_file_with_flag() {
+
+    }
+
 }
