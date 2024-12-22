@@ -8,6 +8,9 @@
 * cd into project directory and install (see above)
 * cargo test
 
+# Bugs from tests
+* Write is bugged with eof write. Eof shouldn't take anything into the buffer... it should just append.
+
 # Active To-Do
 * Add quadruple write test case and fix bug (try writing hello and it breaks after two times)
 * CLI args and parsing
