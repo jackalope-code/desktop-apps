@@ -51,4 +51,15 @@ mod write_overwrite_tests {
     fn write_verify() {
         assert_eq!(4, 4);
     }
+
+    #[ignore]
+    #[test]
+    fn check_write_overwrite() {
+
+    }
+    #[ignore]
+    #[test]
+    fn check_write_overwrite_from_file() {
+
+    }
 }

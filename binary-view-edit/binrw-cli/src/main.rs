@@ -16,12 +16,12 @@ fn main() {
     
     let command = &args[1];
 
-    if !(command != "read" && args.len() == 3) && !(command == "read" && args.len() == 5) && !(command == "write" && args.len() == 5) {
+    if !(command != "read" && args.len() == 3) && !(command == "read" && args.len() == 5) && !(command == "write" && args.len() == 6) {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         println!("{} {}", args.len(), command);
         std::process::exit(1);
     }
-    let filename = &args[2];
+    let filename = if command == "write" {&args[3]} else {&args[2]};
 
     // TODO: Add tests.
     // Tests:
@@ -72,10 +72,34 @@ fn main() {
         },
         "write" | "-w" => {
             println!("Write");
-            let aux_arg1 = &args[3];
-            let aux_arg2 = &args[4];
+            // Specify write splice or write overwrite with the write command (so 6 args total).
+            // TODO: Translates and breaks down eof parsing here and in read. Move into other functions!!!
+            // 0 (program)
+            // 1 command
+            // 2 subcommand (splice or overwrite)
+            let aux_arg1 = &args[2]; // splice or overwrite
+            // 3 filename
+            let aux_arg2 = &args[4]; // 4 position
+            let aux_arg3 = &args[5]; // 5 data (allow arg to read in file data instead)
             // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
-            write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
+            let write_command = match aux_arg1.as_str() {
+                "overwrite" => write_replace,
+                "splice" => write_insert,
+                _ => {
+                    println!("AUX_ARG1: {}", aux_arg1);
+                    panic!("Write command not recognized. Specify either overwrite or splice with the write command.")
+                }
+            };
+            if aux_arg2 == "eof" {
+                let file = File::open(filename).expect("Error opening file for eof write command");
+                let metadata = file.metadata().unwrap();
+                let file_size = metadata.len();
+                write_command(filename, file_size.try_into().unwrap(), aux_arg3.to_string())
+            } else {
+                write_command(filename, aux_arg2.parse::<u64>().unwrap(), aux_arg3.to_string())
+
+            }
+            // write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
         "header" | "-h" => {
             println!("Header");
