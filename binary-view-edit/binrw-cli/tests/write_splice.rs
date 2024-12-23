@@ -23,13 +23,13 @@ mod write_splice_tests {
         return test_output_file_path;
     }
 
-    fn write_hello_once(path_str: &str, position: &str, print_output: bool) -> String {
+    fn write__splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
         let output = Command::new("./target/debug/binrw-cli.exe")
             /* TODO: Issues setting args from variables */
             .arg("write")
             .arg(path_str)
             .arg(position)
-            .arg("hello")
+            .arg(data)
             .output()
             .expect("Failed to execute binrw-cli.");
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -39,6 +39,10 @@ mod write_splice_tests {
             println!("STDERR: {}", stderr);
         }
         return stdout.to_string();
+    }
+
+    fn write_hello_once(path_str: &str, position: &str, print_output: bool) -> String {
+        return write_data(path_str, position, "hello", print_output);
     }
 
     #[ignore]
@@ -127,6 +131,20 @@ mod write_splice_tests {
         let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
         println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
         for i in 0..4 {
+            write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
+            let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
+            println!("READ: {} | i={}", data, i);
+            assert_eq!(data, expected_outputs[i]);
+        }
+    }
+
+    #[test]
+    fn count_down_to_middle() {
+        let test_output_file_path = create_empty_test_file_from_str("count_down_to_middle.test.txt");
+    
+        let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
+        println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
+        for i in 1..6 {
             write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
             let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
             println!("READ: {} | i={}", data, i);
