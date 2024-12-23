@@ -24,9 +24,10 @@ mod write_splice_tests {
     }
 
     fn write__splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
+        //  binrw write splice file_path position hello
         let output = Command::new("./target/debug/binrw-cli.exe")
-            /* TODO: Issues setting args from variables */
             .arg("write")
+            .arg("splice")
             .arg(path_str)
             .arg(position)
             .arg(data)
@@ -104,7 +105,19 @@ mod write_splice_tests {
     fn write_verify() {
         assert_eq!(4, 3);
     }
+    
+    
+    #[ignore]
+    #[test]
+    fn check_write_splice() {
 
+    }
+    
+    #[ignore]
+    #[test]
+    fn check_write_splice_from_file() {
+
+    }
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
@@ -151,4 +164,31 @@ mod write_splice_tests {
             assert_eq!(data, expected_outputs[i]);
         }
     }
+    
+    #[ignore]
+    #[test]
+    fn check_write_overwrite_from_file() {
+
+    }
+    #[ignore]
+    #[test]
+    fn ignore_existing_file_by_default() {
+
+    }
+    #[ignore]
+    #[test]
+    fn edit_existing_file_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn save_edit_as_copy_with_flag() {
+
+    }
+    #[ignore]
+    #[test]
+    fn create_new_file_with_flag() {
+
+    }
+
 }

@@ -44,7 +44,6 @@ mod read_tests {
         assert_eq!(4, 4);
     }
     
-    
     #[test]
     fn read_negative_offset_to_eof() {
         // TODO: copy/pasted here until i can figure out modules
