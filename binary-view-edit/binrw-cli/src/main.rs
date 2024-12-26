@@ -286,19 +286,25 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     // let should_append_file_data = file_size == 0;
 
     if file_size > 0 {
+        // TODO: Some issue where buf_size is doubled or loading when it should be 0. So just skip conditionally on buf_size
         let buf_size: u64 = file_size - start_byte_inclusive; // - (data.len() as u64); // Shouldn't be <0 (I hope)
-        println!("BUF SIZE: {}", buf_size);
-        let mut buf = vec![0u8; buf_size.try_into().unwrap()];
-        let read_size = file.read_to_end(&mut buf).unwrap();
-        println!("Read {} bytes starting from {}. File size {}.", read_size, start_byte_inclusive, file_size);
-        println!("Buffer size {}", buf.len()); // TODO: Why is this double BUF SIZE?
-        println!("Seek to {}", start_byte_inclusive);
-        file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
-        println!("Write data to insert at {} bytes", data.as_bytes().len());
-        println!("\"{:?}\"", data.as_bytes());
-        file.write(data.as_bytes());
-        println!("Write remaining buf: {:?}", &buf);
-        file.write(&buf[buf.len()-read_size..]); // TODO: WHY DO I NEED THIS HACK?!?!
+        if buf_size > 0 {
+            println!("BUF SIZE: {}", buf_size);
+            let mut buf = vec![0u8; buf_size.try_into().unwrap()];
+            let read_size = file.read_to_end(&mut buf).unwrap();
+            println!("Read {} bytes starting from {}. File size {}.", read_size, start_byte_inclusive, file_size);
+            println!("Buffer size {}", buf.len()); // TODO: Why is this double BUF SIZE?
+            println!("Seek to {}", start_byte_inclusive);
+            file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
+            println!("Write data to insert at {} bytes", data.as_bytes().len());
+            println!("\"{:?}\"", data.as_bytes());
+            file.write(data.as_bytes());
+            println!("Write remaining buf: {:?}", &buf);
+            file.write(&buf[buf.len()-read_size..]); // TODO: WHY DO I NEED THIS HACK?!?!
+        } else {
+            file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
+            file.write(data.as_bytes());
+        }
     } else {
         file.write(data.as_bytes());
     }
