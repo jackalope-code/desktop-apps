@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::fs::File;
 use std::path::Path;
-use std::path;
+use std::path::PathBuf;
 use std::fs;
 use std::io;
 
@@ -9,25 +9,25 @@ use std::io;
 mod write_splice_tests {
     use super::*;
 
-    // #[derive(Clone)]
     struct TempFile {
-        path_ref: Box<&Path>,
+        path_ref: PathBuf,
         file: Option<File>,
         keep_file: bool
     }
 
     impl TempFile {
         fn new(filename: &str, keep_file: bool) -> io::Result<Self> {
-            let test_output_file_path = Path::new(filename);
+            let mut test_output_file_path = PathBuf::new();
+            test_output_file_path.push(filename);
 
             // Create new empty test file.
-            let file = File::create(test_output_file_path).expect("Could not create test file");
+            let file = File::create(test_output_file_path.as_path()).expect("Could not create test file");
     
             Ok(TempFile {
-                path_ref: Box::new(test_output_file_path),
+                path_ref: test_output_file_path,
                 file: Some(file),
                 keep_file
-            });
+            })
         }
 
         fn as_file(&mut self) -> Option<&mut File> {
@@ -48,7 +48,7 @@ mod write_splice_tests {
             println!("TestFileRef dropping out of scope!!!");
             if !self.keep_file {
                 println!("Deleting file!!!");
-                fs::remove_file(self.path_ref);
+                fs::remove_file(self.path_ref.as_path());
             }
         }
     }
@@ -187,7 +187,7 @@ mod write_splice_tests {
     #[test]
     fn quadruple_splice_hello_to_front_test() {
         // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
-        let temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
+        let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
         if let Some(file) = temp_file.as_file() {
             // let test_output_file_path = path;
@@ -195,8 +195,8 @@ mod write_splice_tests {
             // let actual_outputs: Vec<&str> = Vec::new();
             println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
             for i in 0..4 {
-                write_hello_once(temp_file.path_str(), "0", true);
-                let data = fs::read_to_string(temp_file.path_ref).expect("Unable to open test output file.");
+                write_hello_once(temp_file.path_str(), "0", false);
+                let data = fs::read_to_string(temp_file.path_ref.as_path()).expect("Unable to open test output file.");
                 // TODO: String lifetime issue idk
                 // actual_outputs.push(&data);
                 println!("READ: {} | i={}", data, i);

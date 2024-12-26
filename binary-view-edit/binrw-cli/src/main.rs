@@ -5,6 +5,7 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
+use std::cmp;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -48,6 +49,7 @@ fn main() {
     // Add file-specific and metadata-specific metadata checks as metadata functionality is added. Test read, write, write-verify.
     // Metadata write verify mode
     // TODO: Read breaks with negative offsets when not hitting the "eof" true case on the if statement.
+    // TODO: Refactor with a custom command parser
     match command.as_str() {
         "read" | "-r" => {
             println!("Read");
@@ -116,6 +118,21 @@ fn main() {
         "metadata" | "-m" => {
             println!("Metadata");
             get_file_metadata(filename);
+        },
+        "diff" => {
+            println!("TODO: Diff");
+            // Diff subcommand usage: binrw diff fileA fileB
+            let aux_arg1 = &args[2];
+            let aux_arg2 = &args[3];
+            // Start with a unified diff. See https://unix.stackexchange.com/questions/81998/understanding-of-diff-output
+            // let unified_diff = String::new();
+            // let biggest_str_len = cmp::max(aux_arg1, aux_arg2);
+            // for i in 0..biggest_str_len {
+            //     if  == aux_arg2 {
+            //         unified_diff.push_str(aux_arg1);
+            //         unified_diff.push_str("\r\n")
+            //     } else if aux_
+            // }
         }
         _ => {
             println!("Command not recognized!");

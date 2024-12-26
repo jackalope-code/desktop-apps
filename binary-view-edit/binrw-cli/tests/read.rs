@@ -5,6 +5,8 @@ mod read_tests {
     use super::*;
 
     fn read_position(path_str: &str, position_arg: &str, num_bytes_arg: &str) -> String {
+        // TODO: num_bytes OR position should be specified from CLI flags!!! Either should be allowed!!! Must be specified!!!
+        // binrw read filename 0 position
         let output = Command::new("./target/debug/binrw-cli.exe")
             /* TODO: Issues setting args from variables */
             .arg("read")
