@@ -186,17 +186,15 @@ mod write_splice_tests {
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
-        // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
         let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
         if let Some(file) = temp_file.as_file() {
-            // let test_output_file_path = path;
             let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
             // let actual_outputs: Vec<&str> = Vec::new();
             println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
             for i in 0..4 {
                 write_hello_once(temp_file.path_str(), "0", false);
-                let data = fs::read_to_string(temp_file.path_ref.as_path()).expect("Unable to open test output file.");
+                let data = fs::read_to_string(temp_file.path_str()).expect("Unable to open test output file.");
                 // TODO: String lifetime issue idk
                 // actual_outputs.push(&data);
                 println!("READ: {} | i={}", data, i);
