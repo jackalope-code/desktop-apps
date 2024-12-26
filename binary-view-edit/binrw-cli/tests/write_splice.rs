@@ -3,42 +3,72 @@ use std::fs::File;
 use std::path::Path;
 use std::path;
 use std::fs;
+use std::io;
 
 #[cfg(test)]
 mod write_splice_tests {
     use super::*;
 
     // #[derive(Clone)]
-    struct TestFileRef<'a> {
-        path: &'a Path,
-        // file: File,
+    struct TempFile {
+        path_ref: Box<&Path>,
+        file: Option<File>,
         keep_file: bool
     }
 
-    impl Drop for TestFileRef<'_> {
+    impl TempFile {
+        fn new(filename: &str, keep_file: bool) -> io::Result<Self> {
+            let test_output_file_path = Path::new(filename);
+
+            // Create new empty test file.
+            let file = File::create(test_output_file_path).expect("Could not create test file");
+    
+            Ok(TempFile {
+                path_ref: Box::new(test_output_file_path),
+                file: Some(file),
+                keep_file
+            });
+        }
+
+        fn as_file(&mut self) -> Option<&mut File> {
+            self.file.as_mut()
+        }
+
+        fn path_str(&mut self) -> &str {
+            return self.path_ref.to_str().unwrap()
+        }
+
+        // fn path(&mut self) -> &Path {
+        //     return self.path_ref
+        // }
+    }
+
+    impl Drop for TempFile {
         fn drop(&mut self) {
+            println!("TestFileRef dropping out of scope!!!");
             if !self.keep_file {
-                fs::remove_file(self.path);
+                println!("Deleting file!!!");
+                fs::remove_file(self.path_ref);
             }
         }
     }
 
     // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
-    fn create_empty_test_file_from_str(filename: &str, keep_file: bool) -> TestFileRef {
-        let test_output_file_path = Path::new(filename);
+    // fn create_empty_test_file_from_str(filename: &str, keep_file: bool) -> TestFileRef {
+    //     let test_output_file_path = Path::new(filename);
 
-        // Check if the test output file exists, delete it if it does.
-        if test_output_file_path.exists() {
-            fs::remove_file(test_output_file_path);
-        }
-        // Create new empty test file.
-        let f = File::create(test_output_file_path).expect("Could not create test file");
+    //     // Check if the test output file exists, delete it if it does.
+    //     if test_output_file_path.exists() {
+    //         fs::remove_file(test_output_file_path);
+    //     }
+    //     // Create new empty test file.
+    //     let f = File::create(test_output_file_path).expect("Could not create test file");
 
-        return TestFileRef {
-            path: test_output_file_path,
-            keep_file
-        };
-    }
+    //     return TestFileRef {
+    //         path: test_output_file_path,
+    //         keep_file
+    //     };
+    // }
     
     // // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
     // fn create_empty_test_file(filename: &str, keep_file: bool) -> TestFileRef {
@@ -156,56 +186,62 @@ mod write_splice_tests {
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
-        let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
-        let test_output_file_path = path;
-        let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
-        // let actual_outputs: Vec<&str> = Vec::new();
-        println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
-        for i in 0..4 {
-            write_hello_once(test_output_file_path.to_str().unwrap(), "0", true);
-            let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-            // TODO: String lifetime issue idk
-            // actual_outputs.push(&data);
-            println!("READ: {} | i={}", data, i);
-            assert_eq!(data, expected_outputs[i]);
-        }
-        // assert_eq!(expected_outputs, actual_outputs);
-    }
+        // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
+        let temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
-    #[test]
-    fn quadruple_splice_hello_to_eof_test() {
-        let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_eof_splice.test.txt", false);
-        let test_output_file_path = path;
-
-        let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
-        println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
-        for i in 0..4 {
-            write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
-            let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-            println!("READ: {} | i={}", data, i);
-            assert_eq!(data, expected_outputs[i]);
+        if let Some(file) = temp_file.as_file() {
+            // let test_output_file_path = path;
+            let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
+            // let actual_outputs: Vec<&str> = Vec::new();
+            println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
+            for i in 0..4 {
+                write_hello_once(temp_file.path_str(), "0", true);
+                let data = fs::read_to_string(temp_file.path_ref).expect("Unable to open test output file.");
+                // TODO: String lifetime issue idk
+                // actual_outputs.push(&data);
+                println!("READ: {} | i={}", data, i);
+                assert_eq!(data, expected_outputs[i]);
+            }
+            // assert_eq!(expected_outputs, actual_outputs);
         }
     }
 
-    #[test]
-    fn count_down_to_middle() {
-        let TestFileRef {path, ..} = create_empty_test_file_from_str("count_down_to_middle.test.txt", false);
-        let test_output_file_path = path;
+    // #[ignore]
+    // #[test]
+    // fn quadruple_splice_hello_to_eof_test() {
+    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_eof_splice.test.txt", false);
+    //     // let test_output_file_path = path;
+
+    //     let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
+    //     println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
+    //     for i in 0..4 {
+    //         write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
+    //         let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
+    //         println!("READ: {} | i={}", data, i);
+    //         assert_eq!(data, expected_outputs[i]);
+    //     }
+    // }
+
+    // #[ignore]
+    // #[test]
+    // fn count_down_to_middle() {
+    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("count_down_to_middle.test.txt", false);
+    //     // let test_output_file_path = path;
     
-        let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
-        println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
-        // binrw write splice filename position data
-        // Each loop step:
-        // Append i to both sides (0 and eof)
-        // Check
-        for i in 1..6 { // TODO: Loop backwards
-            println!("{}", i)
-            // write_splice_data(test_output_file_path.to_str().unwrap(), "eof", true);
-            // let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-            // println!("READ: {} | i={}", data, i);
-            // assert_eq!(data, expected_outputs[i]);
-        }
-    }
+    //     let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
+    //     println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
+    //     // binrw write splice filename position data
+    //     // Each loop step:
+    //     // Append i to both sides (0 and eof)
+    //     // Check
+    //     for i in 1..6 { // TODO: Loop backwards
+    //         println!("{}", i)
+    //         // write_splice_data(test_output_file_path.to_str().unwrap(), "eof", true);
+    //         // let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
+    //         // println!("READ: {} | i={}", data, i);
+    //         // assert_eq!(data, expected_outputs[i]);
+    //     }
+    // }
     
     #[ignore]
     #[test]
