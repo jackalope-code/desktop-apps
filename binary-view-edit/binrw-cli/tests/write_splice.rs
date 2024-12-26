@@ -204,21 +204,21 @@ mod write_splice_tests {
         }
     }
 
-    // #[ignore]
-    // #[test]
-    // fn quadruple_splice_hello_to_eof_test() {
-    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_eof_splice.test.txt", false);
-    //     // let test_output_file_path = path;
+    #[test]
+    fn quadruple_splice_hello_to_eof_test() {
+        let mut temp_file = TempFile::new("hello_eof_splice.test.txt", false).expect("Error creating temp file");
 
-    //     let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
-    //     println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
-    //     for i in 0..4 {
-    //         write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
-    //         let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-    //         println!("READ: {} | i={}", data, i);
-    //         assert_eq!(data, expected_outputs[i]);
-    //     }
-    // }
+        if let Some(File) = temp_file.as_file() {
+            let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
+            println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
+            for i in 0..4 {
+                write_hello_once(temp_file.path_str(), "eof", true);
+                let data = fs::read_to_string(temp_file.path_str()).expect("Unable to open test output file.");
+                println!("READ: {} | i={}", data, i);
+                assert_eq!(data, expected_outputs[i]);
+            }
+        }
+    }
 
     // #[ignore]
     // #[test]
