@@ -3,25 +3,28 @@ use std::fs::File;
 use std::path::Path;
 use std::path;
 use std::fs;
-use std::borrow::Cow;
 
 #[cfg(test)]
 mod write_splice_tests {
     use super::*;
-    
+
+    // #[derive(Clone)]
     struct TestFileRef<'a> {
         path: &'a Path,
-        file: Cow:<'a, &File>
+        // file: File,
+        keep_file: bool
     }
 
     impl Drop for TestFileRef<'_> {
         fn drop(&mut self) {
-            fs::remove_file(self.path);
+            if !self.keep_file {
+                fs::remove_file(self.path);
+            }
         }
     }
 
     // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
-    fn create_empty_test_file_from_str(filename: &str) -> TestFileRef {
+    fn create_empty_test_file_from_str(filename: &str, keep_file: bool) -> TestFileRef {
         let test_output_file_path = Path::new(filename);
 
         // Check if the test output file exists, delete it if it does.
@@ -32,10 +35,28 @@ mod write_splice_tests {
         let f = File::create(test_output_file_path).expect("Could not create test file");
 
         return TestFileRef {
-            file: Cow::from(f),
-            path: test_output_file_path
+            path: test_output_file_path,
+            keep_file
         };
     }
+    
+    // // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
+    // fn create_empty_test_file(filename: &str, keep_file: bool) -> TestFileRef {
+    //     let test_output_file_path = Path::new(filename);
+
+    //     // Check if the test output file exists, delete it if it does.
+    //     if test_output_file_path.exists() {
+    //         fs::remove_file(test_output_file_path);
+    //     }
+    //     // Create new empty test file.
+    //     let f = File::create(test_output_file_path).expect("Could not create test file");
+
+    //     return TestFileRef {
+    //         file: f,
+    //         path: test_output_file_path,
+    //         keep_file
+    //     };
+    // }
 
     fn write_splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
         //  binrw write splice file_path position hello
@@ -135,7 +156,7 @@ mod write_splice_tests {
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
-        let TestFileRef {path, file} = create_empty_test_file_from_str("hello_prepend_splice.test.txt");
+        let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
         let test_output_file_path = path;
         let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
         // let actual_outputs: Vec<&str> = Vec::new();
@@ -153,7 +174,7 @@ mod write_splice_tests {
 
     #[test]
     fn quadruple_splice_hello_to_eof_test() {
-        let TestFileRef {path, file} = create_empty_test_file_from_str("hello_eof_splice.test.txt");
+        let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_eof_splice.test.txt", false);
         let test_output_file_path = path;
 
         let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
@@ -168,7 +189,7 @@ mod write_splice_tests {
 
     #[test]
     fn count_down_to_middle() {
-        let TestFileRef {path, file} = create_empty_test_file_from_str("count_down_to_middle.test.txt");
+        let TestFileRef {path, ..} = create_empty_test_file_from_str("count_down_to_middle.test.txt", false);
         let test_output_file_path = path;
     
         let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
