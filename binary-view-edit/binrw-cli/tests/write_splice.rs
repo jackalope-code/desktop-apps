@@ -4,6 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::fs;
 use std::io;
+use utilities::TempFile;
 
 #[cfg(test)]
 mod write_splice_tests {
