@@ -1,18 +1,24 @@
+use std::fs;
+use std::fs::File;
+use std::process::Command;
+use std::path::Path;
+use std::path::PathBuf;
+use std::io;
 
-mod utilities {
+// pub mod utils {
 
-  struct TempFile {
+  pub struct TempFile {
     path_ref: PathBuf,
     file: Option<File>,
     keep_file: bool
   }
   
   impl TempFile {
-    fn new(filename: &str, keep_file: bool) -> io::Result<Self> {
+    pub fn new(filename: &str, keep_file: bool) -> io::Result<Self> {
         let mut test_output_file_path = PathBuf::new();
         test_output_file_path.push(filename);
   
-        // Create new empty test file.
+        // Create new empty temp file.
         let file = File::create(test_output_file_path.as_path()).expect("Could not create temp file");
   
         Ok(TempFile {
@@ -22,11 +28,11 @@ mod utilities {
         })
     }
   
-    fn as_file(&mut self) -> Option<&mut File> {
+    pub fn as_file(&mut self) -> Option<&mut File> {
         self.file.as_mut()
     }
   
-    fn path_str(&mut self) -> &str {
+    pub fn path_str(&mut self) -> &str {
         return self.path_ref.to_str().unwrap()
     }
   
@@ -44,4 +50,4 @@ mod utilities {
         }
     }
   }
-}
+// }

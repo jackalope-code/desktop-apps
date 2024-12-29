@@ -4,12 +4,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::fs;
 use std::io;
-use utilities::TempFile;
+
+// mod utils;
+use binrw_cli::utils::tempfile::TempFile;
 
 #[cfg(test)]
 mod write_splice_tests {
     use super::*;
-
+    
     fn write_splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
         //  binrw write splice file_path position hello
         let output = Command::new("./target/debug/binrw-cli.exe")
