@@ -186,7 +186,6 @@ mod write_splice_tests {
 
     #[test]
     fn quadruple_splice_hello_to_front_test() {
-        // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_prepend_splice.test.txt", false);
         let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
         if let Some(file) = temp_file.as_file() {
@@ -206,42 +205,43 @@ mod write_splice_tests {
         }
     }
 
-    // #[ignore]
-    // #[test]
-    // fn quadruple_splice_hello_to_eof_test() {
-    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("hello_eof_splice.test.txt", false);
-    //     // let test_output_file_path = path;
+    #[test]
+    fn quadruple_splice_hello_to_eof_test() {
+        let mut temp_file = TempFile::new("hello_eof_splice.test.txt", false).expect("Error creating temp file");
 
-    //     let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
-    //     println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
-    //     for i in 0..4 {
-    //         write_hello_once(test_output_file_path.to_str().unwrap(), "eof", true);
-    //         let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-    //         println!("READ: {} | i={}", data, i);
-    //         assert_eq!(data, expected_outputs[i]);
-    //     }
-    // }
+        if let Some(file) = temp_file.as_file() {
+            let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
+            println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
+            for i in 0..4 {
+                write_hello_once(temp_file.path_str(), "eof", true);
+                let data = fs::read_to_string(temp_file.path_str()).expect("Unable to open test output file.");
+                println!("READ: {} | i={}", data, i);
+                assert_eq!(data, expected_outputs[i]);
+            }
+        }
+    }
 
-    // #[ignore]
-    // #[test]
-    // fn count_down_to_middle() {
-    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("count_down_to_middle.test.txt", false);
-    //     // let test_output_file_path = path;
-    
-    //     let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
-    //     println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
-    //     // binrw write splice filename position data
-    //     // Each loop step:
-    //     // Append i to both sides (0 and eof)
-    //     // Check
-    //     for i in 1..6 { // TODO: Loop backwards
-    //         println!("{}", i)
-    //         // write_splice_data(test_output_file_path.to_str().unwrap(), "eof", true);
-    //         // let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-    //         // println!("READ: {} | i={}", data, i);
-    //         // assert_eq!(data, expected_outputs[i]);
-    //     }
-    // }
+    #[test]
+    fn count_down_to_middle() {
+        let mut temp_file = TempFile::new("count_down_to_middle.test.txt", false).expect("Error creating temp file");
+
+        if let Some(file) = temp_file.as_file() {
+            let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
+            println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
+            // binrw write splice filename position data
+            // Each loop step:
+            // Append i to both sides (0 and eof)
+            // Check
+            for i in 1..6 { // TODO: Loop backwards
+                println!("{}", i);
+                write_splice_data(temp_file.path_str(), "eof", i.to_string(), true);
+                write_splice_data(temp_file.path_str(), "0", i.to_string(), true);
+                let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
+                // println!("READ: {} | i={}", data, i);
+                // assert_eq!(data, expected_outputs[i]);
+            }
+        }
+    }
     
     #[ignore]
     #[test]
@@ -268,5 +268,4 @@ mod write_splice_tests {
     fn create_new_file_with_flag() {
 
     }
-
 }
