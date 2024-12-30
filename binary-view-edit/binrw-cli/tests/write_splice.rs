@@ -5,89 +5,13 @@ use std::path::PathBuf;
 use std::fs;
 use std::io;
 
+// mod utils;
+use binrw_cli::utils::tempfile::TempFile;
+
 #[cfg(test)]
 mod write_splice_tests {
     use super::*;
-
-    struct TempFile {
-        path_ref: PathBuf,
-        file: Option<File>,
-        keep_file: bool
-    }
-
-    impl TempFile {
-        fn new(filename: &str, keep_file: bool) -> io::Result<Self> {
-            let mut test_output_file_path = PathBuf::new();
-            test_output_file_path.push(filename);
-
-            // Create new empty test file.
-            let file = File::create(test_output_file_path.as_path()).expect("Could not create test file");
     
-            Ok(TempFile {
-                path_ref: test_output_file_path,
-                file: Some(file),
-                keep_file
-            })
-        }
-
-        fn as_file(&mut self) -> Option<&mut File> {
-            self.file.as_mut()
-        }
-
-        fn path_str(&mut self) -> &str {
-            return self.path_ref.to_str().unwrap()
-        }
-
-        // fn path(&mut self) -> &Path {
-        //     return self.path_ref
-        // }
-    }
-
-    impl Drop for TempFile {
-        fn drop(&mut self) {
-            println!("TestFileRef dropping out of scope!!!");
-            if !self.keep_file {
-                println!("Deleting file!!!");
-                fs::remove_file(self.path_ref.as_path());
-            }
-        }
-    }
-
-    // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
-    // fn create_empty_test_file_from_str(filename: &str, keep_file: bool) -> TestFileRef {
-    //     let test_output_file_path = Path::new(filename);
-
-    //     // Check if the test output file exists, delete it if it does.
-    //     if test_output_file_path.exists() {
-    //         fs::remove_file(test_output_file_path);
-    //     }
-    //     // Create new empty test file.
-    //     let f = File::create(test_output_file_path).expect("Could not create test file");
-
-    //     return TestFileRef {
-    //         path: test_output_file_path,
-    //         keep_file
-    //     };
-    // }
-    
-    // // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
-    // fn create_empty_test_file(filename: &str, keep_file: bool) -> TestFileRef {
-    //     let test_output_file_path = Path::new(filename);
-
-    //     // Check if the test output file exists, delete it if it does.
-    //     if test_output_file_path.exists() {
-    //         fs::remove_file(test_output_file_path);
-    //     }
-    //     // Create new empty test file.
-    //     let f = File::create(test_output_file_path).expect("Could not create test file");
-
-    //     return TestFileRef {
-    //         file: f,
-    //         path: test_output_file_path,
-    //         keep_file
-    //     };
-    // }
-
     fn write_splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
         //  binrw write splice file_path position hello
         let output = Command::new("./target/debug/binrw-cli.exe")
@@ -189,13 +113,12 @@ mod write_splice_tests {
         let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
         if let Some(file) = temp_file.as_file() {
-            // let test_output_file_path = path;
             let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
             // let actual_outputs: Vec<&str> = Vec::new();
             println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
             for i in 0..4 {
                 write_hello_once(temp_file.path_str(), "0", false);
-                let data = fs::read_to_string(temp_file.path_ref.as_path()).expect("Unable to open test output file.");
+                let data = fs::read_to_string(temp_file.path_str()).expect("Unable to open test output file.");
                 // TODO: String lifetime issue idk
                 // actual_outputs.push(&data);
                 println!("READ: {} | i={}", data, i);

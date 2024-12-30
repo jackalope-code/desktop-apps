@@ -1,0 +1,34 @@
+    // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
+    // fn create_empty_test_file_from_str(filename: &str, keep_file: bool) -> TestFileRef {
+    //     let test_output_file_path = Path::new(filename);
+
+    //     // Check if the test output file exists, delete it if it does.
+    //     if test_output_file_path.exists() {
+    //         fs::remove_file(test_output_file_path);
+    //     }
+    //     // Create new empty test file.
+    //     let f = File::create(test_output_file_path).expect("Could not create test file");
+
+    //     return TestFileRef {
+    //         path: test_output_file_path,
+    //         keep_file
+    //     };
+    // }
+    
+    // // TODO: Add a RC for lifetime and a toggle param to make the file self-delete
+    // fn create_empty_test_file(filename: &str, keep_file: bool) -> TestFileRef {
+    //     let test_output_file_path = Path::new(filename);
+
+    //     // Check if the test output file exists, delete it if it does.
+    //     if test_output_file_path.exists() {
+    //         fs::remove_file(test_output_file_path);
+    //     }
+    //     // Create new empty test file.
+    //     let f = File::create(test_output_file_path).expect("Could not create test file");
+
+    //     return TestFileRef {
+    //         file: f,
+    //         path: test_output_file_path,
+    //         keep_file
+    //     };
+    // }

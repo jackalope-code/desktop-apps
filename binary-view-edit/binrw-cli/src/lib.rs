@@ -2,6 +2,8 @@
 
 // TODO: Modules? Importing? Exporting?
 
+pub mod utils;
+
 fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> Vec<String> {
     let mut output: Vec<String> = Vec::new();
     if precede_zero_x {

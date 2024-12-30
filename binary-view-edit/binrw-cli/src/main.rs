@@ -7,6 +7,8 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::cmp;
 
+mod utils;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
