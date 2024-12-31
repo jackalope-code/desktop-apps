@@ -12,16 +12,24 @@
 * Write is bugged with eof write. Eof shouldn't take anything into the buffer... it should just append.
 
 # Active To-Do
-* Add quadruple write test case and fix bug (try writing hello and it breaks after two times)
-* CLI args and parsing
+* Add file write (with overwrite/~~splice~~ options)
+  * Add an exact write mode to write overwrite that writes exactly over a buffer, perhaps optionally padding one side or the other with zeroes.
+* CLI args and parsing (split into a module)
 * Testing
 * ~~Get file size in bytes~~
   * Incorporate into a size command
-  * Incorporate into negative offsets for file read/write (not negative byte length, negative offsets)
+  * Incorporate into negative offsets for file read/write (not negative byte length, negative offsets)... DO THIS ACROSS THE APP
+* How far do I want to go with file type detection?
+* Add a GUI by using a Rust API as an interface that can be called from Typescript (Tauri?). Bundle the application GUI in Electron.
 * ~~Make a file detection algorithm from magic numbers at the start and (at least for jpgs) end of files~~
-* Add file write (with overwrite/splice options)
 * Add metadata parse (read/write) options (not to be confused with metadata in the Rust library, which would be useful here in differentiating symlinks/dirs/files).
-* Review and document
+  * ID3
+    * v1 READ LAST 128 bytes into struct
+* Review, test, and document
+
+# Done
+~~* Add quadruple write test case and fix bug (try writing hello and it breaks after two times) FIXED~~
+~~* Added a temp file module that wasn't on the to-do~~
 
 # Stuff to work on
 * Figure out how to keep targets in different directories out of .gitignore
