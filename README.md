@@ -31,7 +31,6 @@
     * v1
       * READ LAST 128 bytes into struct somehow
       * After getting the rest working, parse the genre table and get a genre somehow
-
   * EXIF
     * Add EXIF reading
     * Add EXIF clearing for e.g. time, timezone, place. Allow writing/rewriting if there are comments.

@@ -8,21 +8,36 @@ impl ArgParse {
     OnePlusVecValue(None)
   }
 
+  pub enum Value {
+    String(String),
+    Number(i64)
+  }
+
   pub enum Action {
-    
+    StoreTrue,
+    StoreFalse,
+    Append,
+    Count,
+    StoreValue(Value),
+    AppendValue(Value),
   }
 
-  pub fn add_argument(arg: &str, n_args, NArgs, ) {
+  pub struct Argument {
+    parameter: String,
+    n_args, NArgs,
+    action: Action,
+    help: String
+  }
+
+  pub fn add_argument(&mut self, arg: Argument) {
 
   }
 
-  pub fn add_argument()
-
-  pub fn parse_args() {
+  pub fn parse_args(&mut self) {
 
   }
 
-  pub fn get_opts(): Vec<String> {
+  pub fn get_opts(&mut self): Vec<String> {
 
   }
 }
