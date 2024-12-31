@@ -14,6 +14,10 @@
 # Active To-Do
 * Add file write (with overwrite/~~splice~~ options)
   * Add an exact write mode to write overwrite that writes exactly over a buffer, perhaps optionally padding one side or the other with zeroes.
+* Utilities
+  * Add text and binary diffing
+  * Add a "strings" reading/printing utility
+  * Disassembly utils?
 * CLI args and parsing (split into a module)
 * Testing
 * ~~Get file size in bytes~~
@@ -26,6 +30,8 @@
   * ID3
     * v1 READ LAST 128 bytes into struct
 * Review, test, and document
+* Read the Rust book
+* Read about design patterns that are useful in Rust
 
 # Done
 ~~* Add quadruple write test case and fix bug (try writing hello and it breaks after two times) FIXED~~
