@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::fs;
 use std::io;
 
-// mod utils;
 use binrw_cli::utils::tempfile::TempFile;
 
 #[cfg(test)]

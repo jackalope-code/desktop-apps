@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::File;
-use std::process::Command;
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::io;
@@ -34,9 +34,9 @@ impl TempFile {
       return self.path_ref.to_str().unwrap()
   }
 
-  // fn path(&mut self) -> &Path {
-  //     return self.path_ref
-  // }
+  fn path(&mut self) -> &Path {
+      &self.path_ref
+  }
 }
 
 impl Drop for TempFile {

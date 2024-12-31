@@ -7,7 +7,7 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::cmp;
 
-mod utils;
+use binrw_cli::utils::tempfile::TempFile;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

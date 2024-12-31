@@ -1,11 +1,19 @@
 
-impl ArgParse {
+mod argparse {
+  use std::env;
 
-  pub enum NArgs {
+  pub struct Argument {
+    parameter: String,
+    n_args: NArgs,
+    action: Action,
+    help: String
+  }
+
+  pub enum NArgs { 
     Value(u64),
-    OptionalSingleValue(None),
-    WildcardAnyVecValues(None),
-    OnePlusVecValue(None)
+    OptionalSingleValue,
+    WildcardAnyVecValues,
+    OnePlusVecValue
   }
 
   pub enum Value {
@@ -21,23 +29,33 @@ impl ArgParse {
     StoreValue(Value),
     AppendValue(Value),
   }
-
-  pub struct Argument {
-    parameter: String,
-    n_args, NArgs,
-    action: Action,
-    help: String
+  
+  struct ArgParse {
+    args: Vec<String>
   }
-
-  pub fn add_argument(&mut self, arg: Argument) {
-
-  }
-
-  pub fn parse_args(&mut self) {
-
-  }
-
-  pub fn get_opts(&mut self): Vec<String> {
-
+  
+  impl ArgParse {
+  
+  
+  
+    pub fn new(&mut self) -> ArgParse {
+      let args: Vec<String> = env::args().collect();
+      ArgParse {
+        args
+      }
+    }
+  
+    pub fn add_argument(&mut self, arg: Argument) {
+  
+    }
+  
+    pub fn parse_args(&mut self) {
+  
+    }
+  
+    // TODO: Implement
+    // pub fn get_opts(&mut self): Vec<String> {
+  
+    // }
   }
 }

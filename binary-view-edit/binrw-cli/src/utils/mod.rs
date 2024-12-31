@@ -1,4 +1,5 @@
 pub mod tempfile;
+pub mod argparse;
 
 fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> Vec<String> {
   let mut output: Vec<String> = Vec::new();
