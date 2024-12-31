@@ -19,7 +19,11 @@ fn main() {
     
     let command = &args[1];
 
-    if !(command != "read" && args.len() == 3) && !(command == "read" && args.len() == 5) && !(command == "write" && args.len() == 6) {
+    if !(command != "read" && args.len() == 3) &&
+        !(command == "tag" && args.len() == 4) &&
+        !(command == "read" && args.len() == 5) &&
+        !(command == "write" && args.len() == 6)
+    {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         println!("{} {}", args.len(), command);
         std::process::exit(1);
@@ -123,9 +127,11 @@ fn main() {
         },
         "tag" => {
             println!("Tag");
-            let aux_arg1 = &args[2]; // read or write
-            if aux_arg1 == "read" {
-                read_id3v1_tag(filename)
+            let subcommand = &args[2]; // read or write
+            let filename = &args[3];
+            if subcommand == "read" {
+                // If the file is an MP3 using ID3v1
+                read_id3v1_tag(filename);
             }
         },
         "diff" => {
@@ -160,7 +166,8 @@ fn main() {
 // }
 
 fn read_id3v1_tag(filename: &str) {
-    read_bytes()
+    let data: Vec<u8> = read_to_end_i64_negative_offsets(filename, -128);
+    println!("READ TAG DATA: {:?}", data);
 }
 
 fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> Vec<String> {
@@ -252,6 +259,7 @@ fn read_to_end(filename: &str, start_byte_inclusive: u64) -> Vec<u8> {
 }
 
 fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -> Vec<u8> {
+    println!("OPEN {}", filename);
     let mut file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
     let size = metadata.len();

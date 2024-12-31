@@ -28,7 +28,13 @@
 * ~~Make a file detection algorithm from magic numbers at the start and (at least for jpgs) end of files~~
 * Add metadata parse (read/write) options (not to be confused with metadata in the Rust library, which would be useful here in differentiating symlinks/dirs/files).
   * ID3
-    * v1 READ LAST 128 bytes into struct
+    * v1
+      * READ LAST 128 bytes into struct somehow
+      * After getting the rest working, parse the genre table and get a genre somehow
+
+  * EXIF
+    * Add EXIF reading
+    * Add EXIF clearing for e.g. time, timezone, place. Allow writing/rewriting if there are comments.
 * Review, test, and document
 * Read the Rust book
 * Read about design patterns that are useful in Rust
