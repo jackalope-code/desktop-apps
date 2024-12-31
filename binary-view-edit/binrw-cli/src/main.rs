@@ -121,6 +121,13 @@ fn main() {
             println!("Metadata");
             get_file_metadata(filename);
         },
+        "tag" => {
+            println!("Tag");
+            let aux_arg1 = &args[2]; // read or write
+            if aux_arg1 == "read" {
+                read_id3v1_tag(filename)
+            }
+        },
         "diff" => {
             println!("TODO: Diff");
             // Diff subcommand usage: binrw diff fileA fileB
@@ -151,6 +158,10 @@ fn main() {
 //     }
 //     return parsed_header;
 // }
+
+fn read_id3v1_tag(filename: &str) {
+    read_bytes()
+}
 
 fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> Vec<String> {
     let mut output: Vec<String> = Vec::new();
@@ -185,6 +196,7 @@ fn read_binary_file_contents(filename: &str) {
     println!("{:?}", header);
 }
 
+// TODO: Support optional negative start offset (but keep the u64 range when possible... how??? And standardize this across fns!!!)
 fn read_bytes(filename: &str, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
     let mut buffer = vec![0u8; num_bytes];
     let mut file = File::open(filename).unwrap();

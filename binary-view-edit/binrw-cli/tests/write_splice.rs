@@ -143,27 +143,6 @@ mod write_splice_tests {
             }
         }
     }
-
-    // #[ignore]
-    // #[test]
-    // fn count_down_to_middle() {
-    //     // let TestFileRef {path, ..} = create_empty_test_file_from_str("count_down_to_middle.test.txt", false);
-    //     // let test_output_file_path = path;
-    
-    //     let expected_outputs = vec!["55", "5445", "543345", "54322345", "5432112345"];
-    //     println!("COUNT DOWN FROM 5 TO 1 FROM BOTH SIDES TO THE MIDDLE");
-    //     // binrw write splice filename position data
-    //     // Each loop step:
-    //     // Append i to both sides (0 and eof)
-    //     // Check
-    //     for i in 1..6 { // TODO: Loop backwards
-    //         println!("{}", i)
-    //         // write_splice_data(test_output_file_path.to_str().unwrap(), "eof", true);
-    //         // let data = fs::read_to_string(test_output_file_path).expect("Unable to open test output file.");
-    //         // println!("READ: {} | i={}", data, i);
-    //         // assert_eq!(data, expected_outputs[i]);
-    //     }
-    // }
     
     #[ignore]
     #[test]
