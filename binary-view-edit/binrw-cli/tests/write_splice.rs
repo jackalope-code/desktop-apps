@@ -132,7 +132,7 @@ mod write_splice_tests {
     fn quadruple_splice_hello_to_eof_test() {
         let mut temp_file = TempFile::new("hello_eof_splice.test.txt", false).expect("Error creating temp file");
 
-        if let Some(File) = temp_file.as_file() {
+        if let Some(file) = temp_file.as_file() {
             let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
             println!("WRITE \"HELLO\" TO FILE FOUR TIMES.");
             for i in 0..4 {
@@ -169,5 +169,4 @@ mod write_splice_tests {
     fn create_new_file_with_flag() {
 
     }
-
 }
