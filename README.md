@@ -37,6 +37,7 @@
 * Review, test, and document
 * Read the Rust book
 * Read about design patterns that are useful in Rust
+* Process command macro?
 
 # Done
 ~~* Add quadruple write test case and fix bug (try writing hello and it breaks after two times) FIXED~~

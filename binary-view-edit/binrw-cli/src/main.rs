@@ -8,10 +8,37 @@ use std::io::Write;
 use std::cmp;
 
 use binrw_cli::utils::tempfile::TempFile;
+use binrw_cli::utils::argparse::ArgParse;
+use binrw_cli::utils::argparse::*;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
 
+    // let mut parser = ArgParse::new(ArgParseInstanceVars {
+    //     program_name: "binrw-cli".to_string(),
+    //     description: "Binary read/write CLI. Read, write, diff, and edit text or binary files.".to_string(),
+    //     epilog: "Made by a human with automated assistance. Written in Rust.".to_string()
+    // });
+    let mut parser = ArgParseBuilder::default()
+        .program_name("binrw-cli".to_string())
+        .description("Binary read/write CLI. Read, write, diff, and edit text or binary fles.".to_string())
+        .epilog("Made with limited library usage. Written in Rust.".to_string())
+        .build().unwrap();
+    parser.add_argument(Argument {
+        parameter: "read_tag".to_string(),
+        n_args: NArgs::Value(1),
+        action: Action::Store,
+        help: "Reads and writes the ID3v1 or EXIF data tags of provided mp3 and jpg files.".to_string()
+    });
+    let data: Vec<(String, Value)> = parser.parse_args();
+    println!("DATA: {:?}", data);
+    let usage = parser.print_usage_string();
+    // let args: Vec<String> = env::args().collect();
+
+    std::process::exit(0);
+
+}
+
+    /*
     if args.len() <= 1 {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         std::process::exit(1);
@@ -478,3 +505,5 @@ fn get_file_metadata(filename: &str) {
     // println!("{:?}", file_type);
     println!("{}", size);
 }
+
+    */

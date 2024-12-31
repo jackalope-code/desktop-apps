@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 
 use binrw_cli::utils::tempfile::TempFile;
+use binrw_cli::cmd;
 
 #[cfg(test)]
 mod write_splice_tests {
@@ -13,14 +14,15 @@ mod write_splice_tests {
     
     fn write_splice_data(path_str: &str, position: &str, data: &str, print_output: bool) -> String {
         //  binrw write splice file_path position hello
-        let output = Command::new("./target/debug/binrw-cli.exe")
-            .arg("write")
-            .arg("splice")
-            .arg(path_str)
-            .arg(position)
-            .arg(data)
-            .output()
-            .expect("Failed to execute binrw-cli.");
+        // let output = Command::new("./target/debug/binrw-cli.exe")
+        //     .arg("write")
+        //     .arg("splice")
+        //     .arg(path_str)
+        //     .arg(position)
+        //     .arg(data)
+        //     .output()
+        //     .expect("Failed to execute binrw-cli.");
+        let output = cmd!(["./target/debug/binrw-cli.exe", "write", "splice", path_str, position, data]).output().expect("Failed to execute binrw-cli.");
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         if print_output {

@@ -1,9 +1,10 @@
 use std::fs;
 use std::fs::File;
 
-use std::path::Path;
+// use std::path::Path;
 use std::path::PathBuf;
 use std::io;
+
 
 pub struct TempFile {
   path_ref: PathBuf,
@@ -34,9 +35,9 @@ impl TempFile {
       return self.path_ref.to_str().unwrap()
   }
 
-  fn path(&mut self) -> &Path {
-      &self.path_ref
-  }
+//   fn path(&mut self) -> &Path {
+//       &self.path_ref
+//   }
 }
 
 impl Drop for TempFile {
