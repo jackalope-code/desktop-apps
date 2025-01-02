@@ -8,16 +8,16 @@ use std::io::Write;
 use std::cmp;
 
 use binrw_cli::utils::tempfile::TempFile;
-use binrw_cli::utils::argparse::ArgParse;
-use binrw_cli::utils::argparse::*;
+// use binrw_cli::utils::argparse::ArgParse;
+// use binrw_cli::utils::argparse::*;
 
 fn main() {
 
-    // let mut parser = ArgParse::new(ArgParseInstanceVars {
-    //     program_name: "binrw-cli".to_string(),
-    //     description: "Binary read/write CLI. Read, write, diff, and edit text or binary files.".to_string(),
-    //     epilog: "Made by a human with automated assistance. Written in Rust.".to_string()
-    // });
+    let mut parser = ArgParse::new(ArgParseInstanceVars {
+        program_name: "binrw-cli".to_string(),
+        description: "Binary read/write CLI. Read, write, diff, and edit text or binary files.".to_string(),
+        epilog: "Made by a human with automated assistance. Written in Rust.".to_string()
+    });
     let mut parser = ArgParseBuilder::default()
         .program_name("binrw-cli".to_string())
         .description("Binary read/write CLI. Read, write, diff, and edit text or binary fles.".to_string())
@@ -32,13 +32,15 @@ fn main() {
     let data: Vec<(String, Value)> = parser.parse_args();
     println!("DATA: {:?}", data);
     let usage = parser.print_usage_string();
-    // let args: Vec<String> = env::args().collect();
 
     std::process::exit(0);
 
 }
 
-    /*
+/*
+
+    let args: Vec<String> = env::args().collect();
+
     if args.len() <= 1 {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         std::process::exit(1);
