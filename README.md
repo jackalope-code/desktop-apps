@@ -12,6 +12,8 @@
 * Write is bugged with eof write. Eof shouldn't take anything into the buffer... it should just append.
 
 # Active To-Do
+* Read line numbers for text mode (count newlines)
+* Get offset positions from diffing
 * Add file write (with overwrite/~~splice~~ options)
   * Add an exact write mode to write overwrite that writes exactly over a buffer, perhaps optionally padding one side or the other with zeroes.
 * Utilities
@@ -29,6 +31,7 @@
 * Add metadata parse (read/write) options (not to be confused with metadata in the Rust library, which would be useful here in differentiating symlinks/dirs/files).
   * ID3
     * v1
+      * Write ID3v1 tag using different software and test reading with this program with a test file and case
       * READ LAST 128 bytes into struct somehow
       * After getting the rest working, parse the genre table and get a genre somehow
   * EXIF
