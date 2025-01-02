@@ -17,7 +17,8 @@
 * Utilities
   * Add text and binary diffing
   * Add a "strings" reading/printing utility
-  * Disassembly utils?
+  * Integration with disassembly/assembly utils to modify binaries?
+  * DLL edit/replacement?
 * CLI args and parsing (split into a module)
 * Testing
 * ~~Get file size in bytes~~
@@ -58,6 +59,8 @@
 * Attempt disassembly?
 * Interface with Tauri and add a GUI?
 * Text editing?
+* Edit java class files from a GUI by plugging into javap with Rust
+* Strings text utility to read from the executable/data, not headers/relocation by default
 
 
     // TODO: Add tests.
