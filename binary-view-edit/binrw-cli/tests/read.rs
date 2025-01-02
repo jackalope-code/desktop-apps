@@ -21,6 +21,21 @@ mod read_tests {
         println!("STDERR: {}", stderr);
         return stdout.to_string();
     }
+    fn read_file(path_str: &str) -> String {
+        // TODO: num_bytes OR position should be specified from CLI flags!!! Either should be allowed!!! Must be specified!!!
+        // binrw read filename 0 position
+        let output = Command::new("./target/debug/binrw-cli.exe")
+            /* TODO: Issues setting args from variables */
+            .arg("read")
+            .arg(path_str)
+            .output()
+            .expect("Failed to execute binrw-cli.");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        println!("STDOUT: {}", stdout);
+        println!("STDERR: {}", stderr);
+        return stdout.to_string();
+    }
 
     #[ignore]
     #[test]
@@ -89,4 +104,13 @@ mod read_tests {
     fn invalid_read_offset_parse_fail() {
         assert_eq!(4, 4);
     }
+
+    #[test]
+    fn read_whole_file_with_no_offsets_specified() {
+        let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
+
+        // TODO: Test running the program and getting binary data against a method from scratch here.
+        assert_eq!(3, 4);
+    }
+
 }
