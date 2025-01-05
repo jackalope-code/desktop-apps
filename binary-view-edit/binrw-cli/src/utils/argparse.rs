@@ -14,7 +14,7 @@ pub struct Argument {
 
 #[derive(Debug)]
 pub enum NArgs { 
-  Value(u64),
+  Number(i32),
   OptionalSingleValue,
   WildcardAnyListValues,
   OnePlusListValue
@@ -22,7 +22,7 @@ pub enum NArgs {
 
 #[derive(Debug)]
 pub enum Value {
-  StringValue(String),
+  ArgString(String),
   Number(i64),
   Array(Box<Value>)
 }
@@ -85,19 +85,24 @@ impl ArgParse {
     required_commands.push(usage);
     for (command, arg) in self.arg_map.iter() {
       required_commands.push(command.to_string());
-      let next_args = match arg.n_args {
-        Value(StringValue(arg.n_args)) @ n => {
-          for i in 0..Value(StringValue(n)).parse::<i32>().unwrap() {
+      match &arg.n_args {
+        NArgs::Number(n_args) => {
+          // const n_args = Value::ArgString::(arg.n_args);
+          println!("n_args: {}", n_args);
+          // for i in 0..n_args.parse::<i32>().unwrap() {
+          for i in 0..*n_args {
             required_commands.push(format!("arg_{}", i));
           }
         },
-        OptionalSingleValue => {
+        // Value::Number()
+        // Value::Array()
+        NArgs::OptionalSingleValue => {
 
         },
-        WildcardAnyListValues => {
+        NArgs::WildcardAnyListValues => {
 
         },
-        OnePlusListValue => {
+        NArgs::OnePlusListValue => {
 
         }
       }
@@ -105,10 +110,10 @@ impl ArgParse {
     header + &required_commands.join(" ") + "\n" + &self.epilog
   }
 
-  Value(u64),
-  OptionalSingleValue,
-  WildcardAnyListValues,
-  OnePlusListValue
+  // Value(u64),
+  // OptionalSingleValue,
+  // WildcardAnyListValues,
+  // OnePlusListValue
   
   pub fn print_usage_string(&mut self) {
     println!("{}", self.get_usage_string());
@@ -129,7 +134,7 @@ impl ArgParse {
         println!("DATA: {:?}", self.arg_map.get(current_token));
       }
     }
-    return vec![("--dummy-file-option".to_string(), Value::String("dummy_file_dest".to_string()))];
+    return vec![("--dummy-file-option".to_string(), Value::ArgString("dummy_file_dest".to_string()))];
   }
 
   pub fn add_subparser(&mut self, subparser_path: String) {

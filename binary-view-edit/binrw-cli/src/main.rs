@@ -10,22 +10,29 @@ use std::cmp;
 use binrw_cli::utils::tempfile::TempFile;
 // use binrw_cli::utils::argparse::ArgParse;
 // use binrw_cli::utils::argparse::*;
+use binrw_cli::utils::argparse::Value;
+use binrw_cli::utils::argparse::NArgs;
+use binrw_cli::utils::argparse::Action;
+use binrw_cli::utils::argparse::Argument;
+use binrw_cli::utils::argparse::ArgParseBuilder;
 
 fn main() {
 
-    let mut parser = ArgParse::new(ArgParseInstanceVars {
-        program_name: "binrw-cli".to_string(),
-        description: "Binary read/write CLI. Read, write, diff, and edit text or binary files.".to_string(),
-        epilog: "Made by a human with automated assistance. Written in Rust.".to_string()
-    });
+    // let mut parser = ArgParse::new(ArgParseInstanceVars {
+    //     program_name: "binrw-cli".to_string(),
+    //     description: "Binary read/write CLI. Read, write, diff, and edit text or binary files.".to_string(),
+    //     epilog: "Written from scratch in Rust.".to_string()
+    // });
+
     let mut parser = ArgParseBuilder::default()
         .program_name("binrw-cli".to_string())
         .description("Binary read/write CLI. Read, write, diff, and edit text or binary fles.".to_string())
         .epilog("Made with limited library usage. Written in Rust.".to_string())
         .build().unwrap();
+
     parser.add_argument(Argument {
         parameter: "read_tag".to_string(),
-        n_args: NArgs::Value(1),
+        n_args: NArgs::Number(1),
         action: Action::Store,
         help: "Reads and writes the ID3v1 or EXIF data tags of provided mp3 and jpg files.".to_string()
     });
