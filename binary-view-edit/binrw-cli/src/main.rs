@@ -29,8 +29,8 @@ fn main() {
         .description("Binary read/write CLI. Read, write, diff, and edit text or binary fles.".to_string())
         .epilog("Made with limited library usage. Written in Rust.".to_string())
         .build().unwrap();
-
-    parser.add_argument(Argument {
+    let group = parser.add_mutually_exclusive_group(true);
+    group.add_argument(Argument {
         parameter: "read_tag".to_string(),
         n_args: NArgs::Number(1),
         action: Action::Store,
