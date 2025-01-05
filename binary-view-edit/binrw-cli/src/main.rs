@@ -36,9 +36,10 @@ fn main() {
         action: Action::Store,
         help: "Reads and writes the ID3v1 or EXIF data tags of provided mp3 and jpg files.".to_string()
     });
+    println!("USAGE:");
+    let usage = parser.print_usage_string();
     let data: Vec<(String, Value)> = parser.parse_args();
     println!("DATA: {:?}", data);
-    let usage = parser.print_usage_string();
 
     std::process::exit(0);
 

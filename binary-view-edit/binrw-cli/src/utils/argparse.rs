@@ -47,6 +47,10 @@ pub struct ArgParse {
   sys_args: Vec<String>,
   #[builder(setter(skip))]
   arg_map: HashMap<String, Argument>,
+  #[builder(setter(skip))]
+  required_mutually_exclusive_groups: Vec<MutuallyExclusiveGroup>,
+  #[builder(setter(skip))]
+  optional_mutually_exclusive_groups: Vec<MutuallyExclusiveGroup>,
 }
 
 #[derive(Debug)]
@@ -54,6 +58,25 @@ pub struct ArgParseInstanceVars {
   pub program_name: String,
   pub description: String,
   pub epilog: String,
+}
+
+#[derive(Debug)]
+struct MutuallyExclusiveGroup {
+  arg_map: HashMap<String, Argument>,
+}
+
+impl MutuallyExclusiveGroup {
+
+  fn new() -> MutuallyExclusiveGroup {
+    let args = HashMap::new();
+    MutuallyExclusiveGroup {
+      arg_map: args
+    }
+  }
+
+  pub fn add_argument(&mut self, arg: Argument) {
+    self.arg_map.insert(arg.parameter.clone(), arg);
+  }
 }
 
 impl ArgParse {
@@ -68,7 +91,9 @@ impl ArgParse {
       description,
       epilog,
       sys_args,
-      arg_map: args
+      arg_map: args,
+      required_mutually_exclusive_groups: Vec::<MutuallyExclusiveGroup>::new(),
+      optional_mutually_exclusive_groups: Vec::<MutuallyExclusiveGroup>::new()
     }
   }
 
@@ -90,9 +115,10 @@ impl ArgParse {
           // const n_args = Value::ArgString::(arg.n_args);
           println!("n_args: {}", n_args);
           // for i in 0..n_args.parse::<i32>().unwrap() {
-          for i in 0..*n_args {
+          for i in 1..=*n_args {
             required_commands.push(format!("arg_{}", i));
           }
+          return required_commands.join(" ");
         },
         // Value::Number()
         // Value::Array()
@@ -137,9 +163,16 @@ impl ArgParse {
     return vec![("--dummy-file-option".to_string(), Value::ArgString("dummy_file_dest".to_string()))];
   }
 
-  pub fn add_subparser(&mut self, subparser_path: String) {
-    
+  // TODO: USE REQUIRED FLAG
+  pub fn add_mutually_exclusive_group(&mut self, required: bool) {
+    if required {
+      self.required_mutually_exclusive_groups.push(MutuallyExclusiveGroup::new())
+    }
   }
+
+  // pub fn add_subparser(&mut self, subparser_path: String) {
+    
+  // }
 
   // TODO: Implement
   // pub fn get_opts(&mut self): Vec<String> {
