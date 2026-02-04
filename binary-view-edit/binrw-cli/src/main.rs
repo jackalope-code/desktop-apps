@@ -66,66 +66,42 @@ fn main() {
     // Metadata write verify mode
     // TODO: Read breaks with negative offsets when not hitting the "eof" true case on the if statement.
     // TODO: Refactor with a custom command parser
+    // Debug flag and macro at top of main
+    let debug_enabled = args.iter().any(|a| a == "--debug");
+    macro_rules! debug_log {
+        ($($arg:tt)*) => {
+            if debug_enabled {
+                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                    let _ = writeln!(log, $($arg)*);
+                }
+            }
+        }
+    }
+    debug_log!("ARGS: {:?}", args);
+
     match command.as_str() {
         "read" | "-r" => {
             println!("Read");
             let _aux_arg1 = &args[3];
             let _aux_arg2 = &args[4];
-            // Try to parse as a u64 and use absolute units when given
-            // Try to parse as i64 when negative units are given
-            // Either specify a range or byte offset. This should be set with a flag. Settle on a reasonable default.
-            // Absolute units and offsets should be able to be mixed in a single command
-            // "eof" or "EOf" should work for the second read/write arg to read/write to the end of the file (whether in overwrite or splice write mode)
-            use std::fs::OpenOptions;
-            use std::io::Write as IoWrite;
-            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                let _ = writeln!(log, "IN READ: _aux_arg2 raw value: '{}', trimmed: '{}', checking for 'eof'", _aux_arg2, _aux_arg2.trim());
-            }
+            debug_log!("IN READ: _aux_arg2 raw value: '{}', trimmed: '{}', checking for 'eof'", _aux_arg2, _aux_arg2.trim());
             if _aux_arg2.trim().eq_ignore_ascii_case("eof") {
-                use std::fs::OpenOptions;
-                use std::io::Write as IoWrite;
-                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                    let _ = writeln!(log, "IN READ: _aux_arg2 value: '{}', checking for 'eof'", _aux_arg2);
-                }
-                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                                let _ = writeln!(log, "IN READ: _aux_arg2 == 'eof' branch taken");
-                            }
+                debug_log!("IN READ: _aux_arg2 == 'eof' branch taken");
                 match _aux_arg1.parse::<i64>() {
                     Ok(offset) => {
-                        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                            let _ = writeln!(log, "IN READ: parsed offset = {}", offset);
-                        }
-                        let file = File::open(filename);
-                        if let Ok(f) = file {
-                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                                let _ = writeln!(log, "IN READ: file opened successfully");
-                            }
-                            let metadata = f.metadata().unwrap();
-                            let size = metadata.len() as i64;
-                            let start_offset = if offset < 0 {
-                                let off = size + offset;
-                                if off < 0 { 0 } else { off }
-                            } else {
-                                offset
-                            };
-                            let end_offset = size - 1;
-                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                                let _ = writeln!(log, "IN READ: calling read_range_i64_negative_start with start_offset={} end_offset={} size={}", start_offset, end_offset, size);
-                            }
-                            let data = read_range_i64_negative_start(filename, start_offset, end_offset as u64);
-                            let output = format!("{}", parse_hex_data(data, false).join(" "));
-                            println!("{}", output);
+                        let size = std::fs::metadata(filename).unwrap().len() as i64;
+                        let start_offset = if offset < 0 {
+                            let off = size + offset;
+                            if off < 0 { 0 } else { off }
                         } else {
-                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                                let _ = writeln!(log, "IN READ: file open failed");
-                            }
-                            println!();
-                        }
+                            offset
+                        };
+                        let end_offset = size - 1;
+                        let data = read_range_i64_negative_start(filename, start_offset, end_offset as u64);
+                        let output = format!("{}", parse_hex_data(data, false).join(" "));
+                        println!("{}", output);
                     }
                     Err(_) => {
-                        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                            let _ = writeln!(log, "IN READ: offset parse failed: {}", _aux_arg1);
-                        }
                         eprintln!("Invalid offset: {}", _aux_arg1);
                         println!();
                     }
