@@ -9,7 +9,7 @@ mod write_overwrite_tests {
     use std::process::Command;
 
     fn run_write_command(mode: &str, file: &str, offset: &str, data: &str) {
-        let _ = Command::new("../../target/debug/binrw-cli")
+        let _ = Command::new("target/debug/binrw-cli.exe")
             .arg("write")
             .arg(mode)
             .arg(file)
@@ -121,6 +121,14 @@ mod write_overwrite_tests {
         run_write_command("overwrite", path, "9999", "XYZ");
         let content = fs::read_to_string(path).unwrap();
         assert_eq!(content, "abcdef");
+    }
+
+    // Removed duplicate invalid_write_offset_fail
+
+    #[test]
+    fn overwrite_file_with_file() {
+        // TODO: Implement this test using a temporary file as a data source and with this app logic
+        assert_eq!(2, 3);
     }
 
     #[test]

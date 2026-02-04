@@ -22,7 +22,7 @@ fn main() {
     }
 
     if args.len() <= 1 {
-        println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
+        println!("Expected usage: binrw read|write|header|new|type|size|metadata [filename]");
         std::process::exit(1);
     }
 
@@ -142,6 +142,17 @@ fn main() {
                 }
             }
         },
+        "new" => {
+            if args.len() < 3 {
+                println!("Usage: binrw new <filename>");
+                return;
+            }
+            let filename = &args[2];
+            match File::create(filename) {
+                Ok(_) => println!("Created new file: {}", filename),
+                Err(e) => println!("Failed to create file {}: {}", filename, e),
+            }
+        }
         "write" | "-w" => {
             println!("Write");
             // Specify write splice or write overwrite with the write command (so 6 args total).
@@ -168,8 +179,18 @@ fn main() {
                 let file_size = metadata.len();
                 write_command(filename, file_size.try_into().unwrap(), _aux_arg3.to_string())
             } else {
-                write_command(filename, _aux_arg2.parse::<u64>().unwrap(), _aux_arg3.to_string())
-
+                // Support negative offsets for overwrite/splice
+                let file = File::open(filename).expect("Error opening file for write command");
+                let metadata = file.metadata().unwrap();
+                let file_size = metadata.len() as i64;
+                let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
+                let resolved_offset = if offset_i64 < 0 {
+                    let off = file_size + offset_i64;
+                    if off < 0 { 0 } else { off }
+                } else {
+                    offset_i64
+                } as u64;
+                write_command(filename, resolved_offset, _aux_arg3.to_string())
             }
             // write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
@@ -319,9 +340,43 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 // moved to lib.rs
 
 fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
-    let mut file = File::open(filename).unwrap();
-    let _seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
-    let _ = fs::write(filename, data);
+    // Read the file into a buffer
+    let mut buffer = fs::read(filename).unwrap_or_default();
+    let file_len = buffer.len();
+    let mut start = start_byte_inclusive as isize;
+    if start < 0 {
+        start = file_len as isize + start;
+    }
+    if start < 0 {
+        start = 0;
+    }
+    let start = start as usize;
+    let data_bytes = data.as_bytes();
+    // If data is empty, do nothing
+    if data_bytes.is_empty() {
+        return;
+    }
+    let end = start + data_bytes.len();
+    // Descending/invalid overwrites are blocked below
+    if end <= start {
+        // Descending/invalid overwrite
+        return;
+    }
+    if start > buffer.len() {
+        // Do not write if offset is past EOF (only allow at EOF)
+        return;
+    } else if start == buffer.len() {
+        // Only allow appending at EOF
+        buffer.extend_from_slice(data_bytes);
+    } else {
+        // Overwrite up to EOF, append remainder if any
+        let overwrite_end = end.min(buffer.len());
+        buffer.splice(start..overwrite_end, data_bytes[..(overwrite_end-start)].iter().cloned());
+        if end > buffer.len() {
+            buffer.extend_from_slice(&data_bytes[(buffer.len()-start).max(0)..]);
+        }
+    }
+    let _ = fs::write(filename, buffer);
 }
 
 fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
