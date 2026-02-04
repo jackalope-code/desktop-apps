@@ -112,6 +112,7 @@ mod write_splice_tests {
     fn quadruple_splice_hello_to_front_test() {
         let mut temp_file = TempFile::new("hello_prepend_splice.test.txt", false).expect("Error creating temp file");
 
+        // TODO: Work on this interface?
         if let Some(file) = temp_file.as_file() {
             let expected_outputs = vec!["hello", "hellohello", "hellohellohello", "hellohellohellohello"];
             // let actual_outputs: Vec<&str> = Vec::new();

@@ -1,29 +1,39 @@
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::cmp;
+use std::io::Write as IoWrite;
+// use std::cmp;
 
 mod utils;
 
 fn main() {
+    // Debug log CLI arguments
+    use std::fs::OpenOptions;
+    use std::io::Write as IoWrite;
     let args: Vec<String> = env::args().collect();
+    if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+        let _ = writeln!(log, "ARGS: {:?}", args);
+    }
 
     if args.len() <= 1 {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         std::process::exit(1);
     }
-    
+
     let command = &args[1];
 
-    if !(command != "read" && args.len() == 3) &&
-        !(command == "tag" && args.len() == 4) &&
-        !(command == "read" && args.len() == 5) &&
-        !(command == "write" && args.len() == 6)
-    {
+    // Accept 'read' with 5 args, 'tag' with 4, 'write' with 6, and others with 3
+    let valid =
+        (command == "read" && args.len() == 5) ||
+        (command == "tag" && args.len() == 4) ||
+        (command == "write" && args.len() == 6) ||
+        (command != "read" && command != "tag" && command != "write" && args.len() == 3);
+    if !valid {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         println!("{} {}", args.len(), command);
         std::process::exit(1);
@@ -59,23 +69,100 @@ fn main() {
     match command.as_str() {
         "read" | "-r" => {
             println!("Read");
-            let aux_arg1 = &args[3];
-            let aux_arg2 = &args[4];
+            let _aux_arg1 = &args[3];
+            let _aux_arg2 = &args[4];
             // Try to parse as a u64 and use absolute units when given
             // Try to parse as i64 when negative units are given
             // Either specify a range or byte offset. This should be set with a flag. Settle on a reasonable default.
             // Absolute units and offsets should be able to be mixed in a single command
             // "eof" or "EOf" should work for the second read/write arg to read/write to the end of the file (whether in overwrite or splice write mode)
-            if aux_arg2 == "eof" {
-                // Parses for offsets
-                let data = read_to_end_i64_negative_offsets(filename, aux_arg1.parse::<i64>().unwrap());
-                println!("{}", parse_hex_data(data, false).join(" "));
+            use std::fs::OpenOptions;
+            use std::io::Write as IoWrite;
+            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                let _ = writeln!(log, "IN READ: _aux_arg2 raw value: '{}', trimmed: '{}', checking for 'eof'", _aux_arg2, _aux_arg2.trim());
+            }
+            if _aux_arg2.trim().eq_ignore_ascii_case("eof") {
+                use std::fs::OpenOptions;
+                use std::io::Write as IoWrite;
+                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                    let _ = writeln!(log, "IN READ: _aux_arg2 value: '{}', checking for 'eof'", _aux_arg2);
+                }
+                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                                let _ = writeln!(log, "IN READ: _aux_arg2 == 'eof' branch taken");
+                            }
+                match _aux_arg1.parse::<i64>() {
+                    Ok(offset) => {
+                        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                            let _ = writeln!(log, "IN READ: parsed offset = {}", offset);
+                        }
+                        let file = File::open(filename);
+                        if let Ok(f) = file {
+                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                                let _ = writeln!(log, "IN READ: file opened successfully");
+                            }
+                            let metadata = f.metadata().unwrap();
+                            let size = metadata.len() as i64;
+                            let start_offset = if offset < 0 {
+                                let off = size + offset;
+                                if off < 0 { 0 } else { off }
+                            } else {
+                                offset
+                            };
+                            let end_offset = size - 1;
+                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                                let _ = writeln!(log, "IN READ: calling read_range_i64_negative_start with start_offset={} end_offset={} size={}", start_offset, end_offset, size);
+                            }
+                            let data = read_range_i64_negative_start(filename, start_offset, end_offset as u64);
+                            let output = format!("{}", parse_hex_data(data, false).join(" "));
+                            println!("{}", output);
+                        } else {
+                            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                                let _ = writeln!(log, "IN READ: file open failed");
+                            }
+                            println!();
+                        }
+                    }
+                    Err(_) => {
+                        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                            let _ = writeln!(log, "IN READ: offset parse failed: {}", _aux_arg1);
+                        }
+                        eprintln!("Invalid offset: {}", _aux_arg1);
+                        println!();
+                    }
+                }
             } else {
-                // TODO: Doesn't currently parse for offsets or do smart arg parsing
-                let data = read_range(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<u64>().unwrap());
-                // let data = read_bytes(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.parse::<usize>().unwrap());
-                println!("{}", parse_hex_data(data, false).join(" "));
-
+                // Support negative offsets for both arguments
+                let start_i64 = _aux_arg1.parse::<i64>();
+                let end_i64 = _aux_arg2.parse::<i64>();
+                match (start_i64, end_i64) {
+                    (Ok(start), Ok(end)) => {
+                        let metadata = std::fs::metadata(filename);
+                        if let Ok(meta) = metadata {
+                            let file_size = meta.len() as i64;
+                            let start_offset = if start < 0 { file_size + start } else { start };
+                            let end_offset = if end < 0 { file_size + end } else { end };
+                            // If end_offset >= file_size, read to end of file
+                            if start_offset >= 0 && end_offset >= start_offset {
+                                if end_offset >= file_size {
+                                    let data = read_to_end_i64_negative_offsets(filename, start_offset);
+                                    println!("{}", parse_hex_data(data, false).join(" "));
+                                } else {
+                                    let data = read_range(filename, start_offset as u64, end_offset as u64);
+                                    println!("{}", parse_hex_data(data, false).join(" "));
+                                }
+                            } else {
+                                println!();
+                            }
+                        } else {
+                            // Could not get file metadata, print nothing
+                            println!();
+                        }
+                    }
+                    _ => {
+                        // Parsing failed, print nothing
+                        println!();
+                    }
+                }
             }
         },
         "write" | "-w" => {
@@ -87,8 +174,8 @@ fn main() {
             // 2 subcommand (splice or overwrite)
             let aux_arg1 = &args[2]; // splice or overwrite
             // 3 filename
-            let aux_arg2 = &args[4]; // 4 position
-            let aux_arg3 = &args[5]; // 5 data (allow arg to read in file data instead)
+            let _aux_arg2 = &args[4]; // 4 position
+            let _aux_arg3 = &args[5]; // 5 data (allow arg to read in file data instead)
             // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
             let write_command = match aux_arg1.as_str() {
                 "overwrite" => write_replace,
@@ -98,13 +185,13 @@ fn main() {
                     panic!("Write command not recognized. Specify either overwrite or splice with the write command.")
                 }
             };
-            if aux_arg2 == "eof" {
+            if _aux_arg2 == "eof" {
                 let file = File::open(filename).expect("Error opening file for eof write command");
                 let metadata = file.metadata().unwrap();
                 let file_size = metadata.len();
-                write_command(filename, file_size.try_into().unwrap(), aux_arg3.to_string())
+                write_command(filename, file_size.try_into().unwrap(), _aux_arg3.to_string())
             } else {
-                write_command(filename, aux_arg2.parse::<u64>().unwrap(), aux_arg3.to_string())
+                write_command(filename, _aux_arg2.parse::<u64>().unwrap(), _aux_arg3.to_string())
 
             }
             // write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
@@ -204,66 +291,63 @@ fn read_binary_file_contents(filename: &str) {
 }
 
 // TODO: Support optional negative start offset (but keep the u64 range when possible... how??? And standardize this across fns!!!)
-fn read_bytes(filename: &str, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
+fn read_bytes(file: &mut File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
     let mut buffer = vec![0u8; num_bytes];
-    let mut file = File::open(filename).unwrap();
-    let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
+    let _seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
     let _ = file.read_exact(&mut buffer);
-    return buffer;
+    buffer
 }
 
 // Errors reading empty values into buf from read_exact. Buf should be truncated at file size.
-fn read_bytes_file(mut file: &File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
+fn read_bytes_file(file: &mut File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
     let metadata = file.metadata().unwrap();
     let file_size = metadata.len();
-    let buffer_size;
-    if num_bytes > file_size.try_into().unwrap()  {
-        buffer_size = file_size;
+    let buffer_size = if num_bytes > file_size.try_into().unwrap() {
+        file_size as usize
     } else {
-        buffer_size = num_bytes.try_into().unwrap();
-    }
-    let mut buffer = vec![0u8; buffer_size.try_into().unwrap()];
-    // let mut file = File::open(filename).unwrap();
-    let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
-    let _ = file.read_exact(&mut buffer);
-    return buffer;
+        num_bytes
+    };
+    read_bytes(file, start_byte_inclusive, buffer_size)
 }
 
 // TODO: WIP
 fn read_range(filename: &str, start_byte_inclusive: u64, end_byte_inclusive: u64) -> Vec<u8> {
     let mut file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
-    let size = metadata.len();
-    let start_offset = match start_byte_inclusive {
-        start_byte_inclusive if start_byte_inclusive >= 0 => start_byte_inclusive,
-        _ => start_byte_inclusive+size
-    };
-    let end_offset = match end_byte_inclusive {
-        end_byte_inclusive if end_byte_inclusive >= 0 => end_byte_inclusive,
-        _ => end_byte_inclusive+size
-    };
-    if end_offset <= start_offset  {
+    let _size = metadata.len();
+    let start_offset = start_byte_inclusive;
+    let end_offset = end_byte_inclusive;
+    if end_offset < start_offset  {
         println!("{}", start_offset);
         println!("{}", end_offset);
         panic!("Error in read_range: End byte position cannot be before the start byte position.")
     }
-    let buffer_size = end_offset - start_offset;
-    return read_bytes(filename, start_offset, buffer_size.try_into().unwrap());
+    let buffer_size = end_offset - start_offset + 1;
+    read_bytes_file(&mut file, start_offset, buffer_size.try_into().unwrap())
 }
 
 fn read_to_end(filename: &str, start_byte_inclusive: u64) -> Vec<u8> {
-    let mut file = File::open(filename).unwrap();
+    let file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
     let size = metadata.len();
     return read_range(filename, start_byte_inclusive, size-1); // Note size-1. It's size+1 bc I wanted inclusive ranges... I'm off by 1 somewhere???
 }
 
 fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -> Vec<u8> {
-    println!("OPEN {}", filename);
-    let mut file = File::open(filename).unwrap();
+    let file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
-    let size = metadata.len();
-    return read_range_i64_negative_start(filename, start_byte_inclusive, size-1);
+    let size = metadata.len() as i64;
+    let start_offset = if start_byte_inclusive < 0 {
+        let offset = size + start_byte_inclusive;
+        if offset < 0 { 0 } else { offset }
+    } else {
+        start_byte_inclusive
+    };
+    if start_offset < 0 || start_offset >= size {
+        return vec![];
+    }
+    // Read from start_offset (inclusive) to size-1 (inclusive)
+    read_range(filename, start_offset as u64, (size - 1) as u64)
 }
 
 // TODO: WIP. Correctly handle both positive and negative ranges, either one or the other or also mixed. Figure out good type definitions. Convert types correctly. 
@@ -289,29 +373,55 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 
 // TODO: WIP
 fn read_range_i64_negative_start(filename: &str, start_byte_inclusive: i64, end_byte_inclusive: u64) -> Vec<u8> {
+            // Log entry to function for debug
+            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                let _ = writeln!(log, "called read_range_i64_negative_start: filename={} start_byte_inclusive={} end_byte_inclusive={}", filename, start_byte_inclusive, end_byte_inclusive);
+            }
+        use std::fs::OpenOptions;
+        use std::io::Write as IoWrite;
+        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+            let _ = writeln!(log, "start_offset={} end_offset={} size={} buffer_size={}",
+                if start_byte_inclusive < 0 {
+                    let size = std::fs::metadata(filename).unwrap().len() as i64;
+                    let offset = size + start_byte_inclusive;
+                    if offset < 0 { 0 } else { offset }
+                } else {
+                    start_byte_inclusive
+                },
+                end_byte_inclusive as i64,
+                std::fs::metadata(filename).unwrap().len() as i64,
+                (end_byte_inclusive as i64 - if start_byte_inclusive < 0 {
+                    let size = std::fs::metadata(filename).unwrap().len() as i64;
+                    let offset = size + start_byte_inclusive;
+                    if offset < 0 { 0 } else { offset }
+                } else {
+                    start_byte_inclusive
+                } + 1) as usize
+            );
+        }
+    println!("[DEBUG] read_range_i64_negative_start: filename={} start_byte_inclusive={} end_byte_inclusive={}", filename, start_byte_inclusive, end_byte_inclusive);
     let mut file = File::open(filename).unwrap();
     let metadata = file.metadata().unwrap();
-    let size = metadata.len();
-    let start_offset: u64 = match start_byte_inclusive {
-        start_byte_inclusive if start_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
-        _ => u64::try_from(isize::try_from(start_byte_inclusive).unwrap()+isize::try_from(size).unwrap()).unwrap()
+    let size = metadata.len() as i64;
+    let start_offset: i64 = if start_byte_inclusive < 0 {
+        let offset = size + start_byte_inclusive;
+        if offset < 0 { 0 } else { offset }
+    } else {
+        start_byte_inclusive
     };
-    let end_offset: u64 = end_byte_inclusive;
-    // let end_offset: u64 = match end_byte_inclusive {
-    //     end_byte_inclusive if end_byte_inclusive >= 0 => start_byte_inclusive.try_into().unwrap(),
-    //     _ => u64::try_from(end_byte_inclusive).unwrap()+size
-    // };
-    if end_offset <= start_offset  {
-        panic!("Error in read_range: End byte position cannot be before the start byte position.")
+    let end_offset = end_byte_inclusive as i64;
+    // Allow end_offset up to and including the last byte (size - 1)
+    if end_offset < start_offset || start_offset < 0 || end_offset > size - 1 {
+        return vec![];
     }
-    let buffer_size = end_offset - start_offset + 1;
-    return read_bytes(filename, start_offset.try_into().unwrap(), buffer_size.try_into().unwrap());
+    let buffer_size = (end_offset - start_offset + 1) as usize;
+    read_bytes(&mut file, start_offset as u64, buffer_size)
 }
 
 fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
     let mut file = File::open(filename).unwrap();
-    let seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
-    fs::write(filename, data);
+    let _seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
+    let _ = fs::write(filename, data);
 }
 
 fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
@@ -334,18 +444,18 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
             println!("Read {} bytes starting from {}. File size {}.", read_size, start_byte_inclusive, file_size);
             println!("Buffer size {}", buf.len()); // TODO: Why is this double BUF SIZE?
             println!("Seek to {}", start_byte_inclusive);
-            file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
+            let _ = file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
             println!("Write data to insert at {} bytes", data.as_bytes().len());
             println!("\"{:?}\"", data.as_bytes());
-            file.write(data.as_bytes());
+            let _ = file.write(data.as_bytes());
             println!("Write remaining buf: {:?}", &buf);
-            file.write(&buf[buf.len()-read_size..]); // TODO: WHY DO I NEED THIS HACK?!?!
+            let _ = file.write(&buf[buf.len()-read_size..]); // TODO: WHY DO I NEED THIS HACK?!?!
         } else {
-            file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
-            file.write(data.as_bytes());
+            let _ = file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
+            let _ = file.write(data.as_bytes());
         }
     } else {
-        file.write(data.as_bytes());
+        let _ = file.write(data.as_bytes());
     }
     // }
 }
@@ -384,12 +494,13 @@ fn detect_javac(file_id_info: &FileIDInfo) -> bool {
 }
 
 fn get_file_byte_info(filename: &str) -> FileIDInfo {
-    let first_four_bytes = parse_hex_data(read_bytes(filename, 0, 4), false);
+    let mut file = File::open(filename).unwrap();
+    let first_four_bytes = parse_hex_data(read_bytes(&mut file, 0, 4), false);
     let last_two_bytes = parse_hex_data(read_to_end_i64_negative_offsets(filename, -2), false);
-    return FileIDInfo {
+    FileIDInfo {
         first_two_bytes: first_four_bytes[0..2].try_into().unwrap(),
         first_four_bytes: first_four_bytes[0..4].try_into().unwrap(),
-        last_two_bytes: last_two_bytes[0..2].try_into().unwrap()
+        last_two_bytes: last_two_bytes[0..2].try_into().unwrap(),
     }
 }
 

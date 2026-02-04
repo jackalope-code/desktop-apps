@@ -1,0 +1,15 @@
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+IN READ: _aux_arg2 raw value: '-4', trimmed: '-4', checking for 'eof'
+ARGS: ["target\\debug\\binrw-cli.exe", "read", "tests/data/alphabet.txt", "-4", "eof"]
+IN READ: _aux_arg2 raw value: 'eof', trimmed: 'eof', checking for 'eof'
+IN READ: _aux_arg2 value: 'eof', checking for 'eof'
+IN READ: _aux_arg2 == 'eof' branch taken
+IN READ: parsed offset = -4
+IN READ: file opened successfully
+IN READ: calling read_range_i64_negative_start with start_offset=22 end_offset=25 size=26
+called read_range_i64_negative_start: filename=tests/data/alphabet.txt start_byte_inclusive=22 end_byte_inclusive=25
+start_offset=22 end_offset=25 size=26 buffer_size=4

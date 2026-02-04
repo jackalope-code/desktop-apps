@@ -1,7 +1,5 @@
 use std::fs;
 use std::fs::File;
-use std::process::Command;
-use std::path::Path;
 use std::path::PathBuf;
 use std::io;
 
@@ -46,7 +44,7 @@ use std::io;
         println!("TempFile dropping out of scope!!!");
         if !self.keep_file {
             println!("Deleting file!!!");
-            fs::remove_file(self.path_ref.as_path());
+            let _ = fs::remove_file(self.path_ref.as_path());
         }
     }
   }
