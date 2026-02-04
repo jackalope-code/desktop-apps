@@ -1,3 +1,4 @@
+use binrw_cli::{read_range, read_range_i64_negative_start, read_bytes, read_bytes_file};
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -267,40 +268,7 @@ fn read_binary_file_contents(filename: &str) {
 }
 
 // TODO: Support optional negative start offset (but keep the u64 range when possible... how??? And standardize this across fns!!!)
-fn read_bytes(file: &mut File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
-    let mut buffer = vec![0u8; num_bytes];
-    let _seekable = file.seek(SeekFrom::Start(start_byte_inclusive));
-    let _ = file.read_exact(&mut buffer);
-    buffer
-}
-
-// Errors reading empty values into buf from read_exact. Buf should be truncated at file size.
-fn read_bytes_file(file: &mut File, start_byte_inclusive: u64, num_bytes: usize) -> Vec<u8> {
-    let metadata = file.metadata().unwrap();
-    let file_size = metadata.len();
-    let buffer_size = if num_bytes > file_size.try_into().unwrap() {
-        file_size as usize
-    } else {
-        num_bytes
-    };
-    read_bytes(file, start_byte_inclusive, buffer_size)
-}
-
-// TODO: WIP
-fn read_range(filename: &str, start_byte_inclusive: u64, end_byte_inclusive: u64) -> Vec<u8> {
-    let mut file = File::open(filename).unwrap();
-    let metadata = file.metadata().unwrap();
-    let _size = metadata.len();
-    let start_offset = start_byte_inclusive;
-    let end_offset = end_byte_inclusive;
-    if end_offset < start_offset  {
-        println!("{}", start_offset);
-        println!("{}", end_offset);
-        panic!("Error in read_range: End byte position cannot be before the start byte position.")
-    }
-    let buffer_size = end_offset - start_offset + 1;
-    read_bytes_file(&mut file, start_offset, buffer_size.try_into().unwrap())
-}
+// moved to lib.rs
 
 fn read_to_end(filename: &str, start_byte_inclusive: u64) -> Vec<u8> {
     let file = File::open(filename).unwrap();
@@ -348,51 +316,7 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 // }
 
 // TODO: WIP
-fn read_range_i64_negative_start(filename: &str, start_byte_inclusive: i64, end_byte_inclusive: u64) -> Vec<u8> {
-            // Log entry to function for debug
-            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-                let _ = writeln!(log, "called read_range_i64_negative_start: filename={} start_byte_inclusive={} end_byte_inclusive={}", filename, start_byte_inclusive, end_byte_inclusive);
-            }
-        use std::fs::OpenOptions;
-        use std::io::Write as IoWrite;
-        if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
-            let _ = writeln!(log, "start_offset={} end_offset={} size={} buffer_size={}",
-                if start_byte_inclusive < 0 {
-                    let size = std::fs::metadata(filename).unwrap().len() as i64;
-                    let offset = size + start_byte_inclusive;
-                    if offset < 0 { 0 } else { offset }
-                } else {
-                    start_byte_inclusive
-                },
-                end_byte_inclusive as i64,
-                std::fs::metadata(filename).unwrap().len() as i64,
-                (end_byte_inclusive as i64 - if start_byte_inclusive < 0 {
-                    let size = std::fs::metadata(filename).unwrap().len() as i64;
-                    let offset = size + start_byte_inclusive;
-                    if offset < 0 { 0 } else { offset }
-                } else {
-                    start_byte_inclusive
-                } + 1) as usize
-            );
-        }
-    println!("[DEBUG] read_range_i64_negative_start: filename={} start_byte_inclusive={} end_byte_inclusive={}", filename, start_byte_inclusive, end_byte_inclusive);
-    let mut file = File::open(filename).unwrap();
-    let metadata = file.metadata().unwrap();
-    let size = metadata.len() as i64;
-    let start_offset: i64 = if start_byte_inclusive < 0 {
-        let offset = size + start_byte_inclusive;
-        if offset < 0 { 0 } else { offset }
-    } else {
-        start_byte_inclusive
-    };
-    let end_offset = end_byte_inclusive as i64;
-    // Allow end_offset up to and including the last byte (size - 1)
-    if end_offset < start_offset || start_offset < 0 || end_offset > size - 1 {
-        return vec![];
-    }
-    let buffer_size = (end_offset - start_offset + 1) as usize;
-    read_bytes(&mut file, start_offset as u64, buffer_size)
-}
+// moved to lib.rs
 
 fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
     let mut file = File::open(filename).unwrap();
