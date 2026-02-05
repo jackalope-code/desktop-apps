@@ -80,6 +80,8 @@ fn main() {
     // TODO: Refactor with a custom command parser
     // Debug flag and macro at top of main
     let debug_enabled = args.iter().any(|a| a == "--debug");
+    // New flag for overwrite behavior
+    let append_zero_past_eof = args.iter().any(|a| a == "--append-zero-past-eof");
     macro_rules! debug_log {
         ($($arg:tt)*) => {
             if debug_enabled {
@@ -167,43 +169,55 @@ fn main() {
         "write" | "-w" => {
             println!("Write");
             // Specify write splice or write overwrite with the write command (so 6 args total).
-            // TODO: Translates and breaks down eof parsing here and in read. Move into other functions!!!
-            // 0 (program)
-            // 1 command
-            // 2 subcommand (splice or overwrite)
             let aux_arg1 = &args[2]; // splice or overwrite
-            // 3 filename
             let _aux_arg2 = &args[4]; // 4 position
-            let _aux_arg3 = &args[5]; // 5 data (allow arg to read in file data instead)
-            // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
-            let write_command = match aux_arg1.as_str() {
-                "overwrite" => write_overwrite,
-                "insert" => write_insert,
+            let _aux_arg3 = &args[5]; // 5 data
+            match aux_arg1.as_str() {
+                "overwrite" => {
+                    if _aux_arg2 == "eof" {
+                        let file = File::open(filename).expect("Error opening file for eof write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len();
+                        write_overwrite(filename, file_size.try_into().unwrap(), _aux_arg3.to_string(), append_zero_past_eof)
+                    } else {
+                        let file = File::open(filename).expect("Error opening file for write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len() as i64;
+                        let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
+                        let resolved_offset = if offset_i64 < 0 {
+                            let off = file_size + offset_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            offset_i64
+                        } as u64;
+                        write_overwrite(filename, resolved_offset, _aux_arg3.to_string(), append_zero_past_eof)
+                    }
+                },
+                "insert" => {
+                    if _aux_arg2 == "eof" {
+                        let file = File::open(filename).expect("Error opening file for eof write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len();
+                        write_insert(filename, file_size.try_into().unwrap(), _aux_arg3.to_string())
+                    } else {
+                        let file = File::open(filename).expect("Error opening file for write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len() as i64;
+                        let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
+                        let resolved_offset = if offset_i64 < 0 {
+                            let off = file_size + offset_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            offset_i64
+                        } as u64;
+                        write_insert(filename, resolved_offset, _aux_arg3.to_string())
+                    }
+                },
                 _ => {
                     println!("AUX_ARG1: {}", aux_arg1);
                     panic!("Write command not recognized. Specify either overwrite or insert with the write command.")
                 }
-            };
-            if _aux_arg2 == "eof" {
-                let file = File::open(filename).expect("Error opening file for eof write command");
-                let metadata = file.metadata().unwrap();
-                let file_size = metadata.len();
-                write_command(filename, file_size.try_into().unwrap(), _aux_arg3.to_string())
-            } else {
-                // Support negative offsets for overwrite/splice
-                let file = File::open(filename).expect("Error opening file for write command");
-                let metadata = file.metadata().unwrap();
-                let file_size = metadata.len() as i64;
-                let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
-                let resolved_offset = if offset_i64 < 0 {
-                    let off = file_size + offset_i64;
-                    if off < 0 { 0 } else { off }
-                } else {
-                    offset_i64
-                } as u64;
-                write_command(filename, resolved_offset, _aux_arg3.to_string())
             }
-            // write_insert(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
         },
         "header" | "-h" => {
             println!("Header");
@@ -360,36 +374,62 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 // }
 
 /// Overwrite bytes in a file at the given offset.
-/// If the offset is past EOF, pads with zeros and appends the data.
+/// If the offset is past EOF, pads with zeros and appends the data if append_zero_past_eof is true.
 /// If the offset is within the file, replaces bytes up to the length of data.
-/// Usage: binrw write overwrite <filename> <offset> <data>
-fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String) {
-    // Read the file into a buffer
+/// Usage: binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof]
+fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, append_zero_past_eof: bool) {
     let mut buffer = fs::read(filename).unwrap_or_default();
     let file_len = buffer.len();
     let mut start = start_byte_inclusive as isize;
-    if start < 0 {
-        start = file_len as isize + start;
-    }
-    if start < 0 {
-        start = 0;
-    }
-    let start = start as usize;
     let data_bytes = data.as_bytes();
-    // If data is empty, do nothing
     if data_bytes.is_empty() {
         return;
     }
+
+    // If start is negative, overwrite from that offset to EOF, replacing all bytes from that offset to EOF with data
+    if start < 0 {
+        start = file_len as isize + start;
+        if start < 0 {
+            start = 0;
+        }
+        let start_usize = start as usize;
+        // Block if start is past EOF (invalid negative offset)
+        if start_usize > file_len {
+            return;
+        }
+        // If the data would go past EOF, truncate to file end
+        let max_len = file_len - start_usize;
+        let data_to_write = if data_bytes.len() > max_len {
+            &data_bytes[..max_len]
+        } else {
+            data_bytes
+        };
+        buffer.truncate(start_usize);
+        buffer.extend_from_slice(data_to_write);
+        let _ = fs::write(filename, buffer);
+        return;
+    }
+
+    let start = start as usize;
     let end = start + data_bytes.len();
+
     // Block descending/invalid overwrites
     if end <= start {
         return;
     }
-    // Allow writing at any offset past EOF by padding with zeros and appending data
+
+    // If start is past EOF
     if start > buffer.len() {
-        buffer.resize(start, 0);
-        buffer.extend_from_slice(data_bytes);
-    } else if start == buffer.len() {
+        if append_zero_past_eof {
+            buffer.resize(start, 0);
+            buffer.extend_from_slice(data_bytes);
+            let _ = fs::write(filename, buffer);
+        }
+        // If not appending, do nothing
+        return;
+    }
+
+    if start == buffer.len() {
         buffer.extend_from_slice(data_bytes);
     } else {
         // Overwrite up to EOF, do not append past EOF

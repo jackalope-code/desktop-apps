@@ -19,14 +19,55 @@ mod write_overwrite_tests {
             .expect("Failed to run binrw-cli write");
     }
 
+    fn run_write_command_with_flag(mode: &str, file: &str, offset: &str, data: &str, flag: &str) {
+        let _ = Command::new("target/debug/binrw-cli.exe")
+            .arg("write")
+            .arg(mode)
+            .arg(file)
+            .arg(offset)
+            .arg(data)
+            .arg(flag)
+            .output()
+            .expect("Failed to run binrw-cli write with flag");
+    }
+
     #[test]
-    fn write_large_positive_offsets() {
+    fn write_large_positive_offsets_append_zero() {
         let mut file = TempFile::new("test_write_large_positive_offsets.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"abc").unwrap();
         let path = file.path_str();
-        // Write at offset 1000 (beyond EOF) should append to the file
+        // Write at offset 1000 (beyond EOF) should pad with zeros and append data
+        run_write_command_with_flag("overwrite", path, "1000", "xyz", "--append-zero-past-eof");
+        let content = fs::read(path).unwrap();
+        // Should be original data, then 997 zeros, then "xyz"
+        let mut expected = b"abc".to_vec();
+        expected.resize(1000, 0);
+        expected.extend_from_slice(b"xyz");
+        assert_eq!(content, expected);
+    }
+
+    #[test]
+    fn write_large_positive_offsets_no_append() {
+        let mut file = TempFile::new("test_write_large_positive_offsets_no_append.txt", false).unwrap();
+        file.as_file().unwrap().write_all(b"abc").unwrap();
+        let path = file.path_str();
+        // Write at offset 1000 (beyond EOF) should do nothing without flag
         run_write_command("overwrite", path, "1000", "xyz");
+        let content = fs::read(path).unwrap();
+        // Should be unchanged
+        let expected = b"abc".to_vec();
+        assert_eq!(content, expected);
+    }
+
+    #[test]
+    fn overwrite_to_eof() {
+        let mut file = TempFile::new("test_overwrite_to_eof.txt", false).unwrap();
+        file.as_file().unwrap().write_all(b"abcdef").unwrap();
+        let path = file.path_str();
+        // Write at offset -3 (slightly before EOF) should overwrite last 3 bytes
+        run_write_command("overwrite", path, "-3", "xyz");
         let content = fs::read_to_string(path).unwrap();
+        // Should overwrite def with xyz
         assert_eq!(content, "abcxyz");
     }
 
@@ -55,17 +96,30 @@ mod write_overwrite_tests {
     }
 
     #[test]
-    fn write_large_positive_offset_past_eof_success() {
+    fn write_large_positive_offset_past_eof_success_append_zero() {
         let mut file = TempFile::new("test_write_large_positive_offset_past_eof_success.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"abcdef").unwrap();
         let path = file.path_str();
-        // Write at offset 1000 (well past EOF) should pad with zeros and append data
-        run_write_command("overwrite", path, "1000", "xyz");
+        // Write at offset 1000 (well past EOF) should pad with zeros and append data with flag
+        run_write_command_with_flag("overwrite", path, "1000", "xyz", "--append-zero-past-eof");
         let content = fs::read(path).unwrap();
         // Should be original data, then 994 zeros, then "xyz"
         let mut expected = b"abcdef".to_vec();
         expected.resize(1000, 0);
         expected.extend_from_slice(b"xyz");
+        assert_eq!(content, expected);
+    }
+
+    #[test]
+    fn write_large_positive_offset_past_eof_success_no_append() {
+        let mut file = TempFile::new("test_write_large_positive_offset_past_eof_success_no_append.txt", false).unwrap();
+        file.as_file().unwrap().write_all(b"abcdef").unwrap();
+        let path = file.path_str();
+        // Write at offset 1000 (well past EOF) should do nothing without flag
+        run_write_command("overwrite", path, "1000", "xyz");
+        let content = fs::read(path).unwrap();
+        // Should be unchanged
+        let expected = b"abcdef".to_vec();
         assert_eq!(content, expected);
     }
 
@@ -82,15 +136,15 @@ mod write_overwrite_tests {
     }
 
     #[test]
-    fn write_negative_to_negative_ascending_pass() {
-        let mut file = TempFile::new("test_write_negative_to_negative_ascending_pass.txt", false).unwrap();
+    fn overwrite_negative() {
+        let mut file = TempFile::new("test_overwrite_negative_pass.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"abcdef").unwrap();
         let path = file.path_str();
-        // Overwrite from -4 (index 2) to -2 (index 4), ascending
-        run_write_command("overwrite", path, "-4", "XYZ");
+        // Overwrite from -3 (index 3) to the end of the file
+        run_write_command("overwrite", path, "-3", "XYZERRORERRORERROR");
         let content = fs::read_to_string(path).unwrap();
-        // Should overwrite cde with XYZ
-        assert_eq!(content, "abXYZf");
+        // Should overwrite def with XYZ
+        assert_eq!(content, "abcXYZ");
     }
 
     #[test]
