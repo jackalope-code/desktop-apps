@@ -22,7 +22,17 @@ fn main() {
     }
 
     if args.len() <= 1 {
-        println!("Expected usage: binrw read|write|header|new|type|size|metadata [filename]");
+        println!("Expected usage: binrw <command> [args]");
+        println!("Commands:");
+        println!("  read <filename> <start> <end|eof>");
+        println!("  write overwrite <filename> <offset> <data>");
+        println!("  write insert <filename> <offset> <data>");
+        println!("  header <filename>");
+        println!("  new <filename>");
+        println!("  type <filename>");
+        println!("  size <filename>");
+        println!("  metadata <filename>");
+        println!("  copy <src> <dest>");
         std::process::exit(1);
     }
 
@@ -167,11 +177,11 @@ fn main() {
             let _aux_arg3 = &args[5]; // 5 data (allow arg to read in file data instead)
             // write_replace(filename, aux_arg1.parse::<u64>().unwrap(), aux_arg2.to_string())
             let write_command = match aux_arg1.as_str() {
-                "overwrite" => write_replace,
-                "splice" => write_insert,
+                "overwrite" => write_overwrite,
+                "insert" => write_insert,
                 _ => {
                     println!("AUX_ARG1: {}", aux_arg1);
-                    panic!("Write command not recognized. Specify either overwrite or splice with the write command.")
+                    panic!("Write command not recognized. Specify either overwrite or insert with the write command.")
                 }
             };
             if _aux_arg2 == "eof" {
@@ -349,10 +359,11 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 //     return read_bytes(filename, start_offset.try_into().unwrap(), buffer_size.try_into().unwrap());
 // }
 
-// TODO: WIP
-// moved to lib.rs
-
-fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
+/// Overwrite bytes in a file at the given offset.
+/// If the offset is past EOF, pads with zeros and appends the data.
+/// If the offset is within the file, replaces bytes up to the length of data.
+/// Usage: binrw write overwrite <filename> <offset> <data>
+fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String) {
     // Read the file into a buffer
     let mut buffer = fs::read(filename).unwrap_or_default();
     let file_len = buffer.len();
@@ -370,28 +381,27 @@ fn write_replace(filename: &str, start_byte_inclusive: u64, data: String) {
         return;
     }
     let end = start + data_bytes.len();
-    // Descending/invalid overwrites are blocked below
+    // Block descending/invalid overwrites
     if end <= start {
-        // Descending/invalid overwrite
         return;
     }
+    // Allow writing at any offset past EOF by padding with zeros and appending data
     if start > buffer.len() {
-        // Do not write if offset is past EOF (only allow at EOF)
-        return;
+        buffer.resize(start, 0);
+        buffer.extend_from_slice(data_bytes);
     } else if start == buffer.len() {
-        // Only allow appending at EOF
         buffer.extend_from_slice(data_bytes);
     } else {
-        // Overwrite up to EOF, append remainder if any
+        // Overwrite up to EOF, do not append past EOF
         let overwrite_end = end.min(buffer.len());
         buffer.splice(start..overwrite_end, data_bytes[..(overwrite_end-start)].iter().cloned());
-        if end > buffer.len() {
-            buffer.extend_from_slice(&data_bytes[(buffer.len()-start).max(0)..]);
-        }
     }
     let _ = fs::write(filename, buffer);
 }
 
+/// Insert bytes into a file at the given offset, shifting existing data to the right.
+/// The file size increases by the length of the inserted data.
+/// Usage: binrw write insert <filename> <offset> <data>
 fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     let mut file = File::options().read(true).write(true).open(filename).unwrap();
     // let seekable = file.seek(SeekFrom::Start(start_byte_inclusive+1));
