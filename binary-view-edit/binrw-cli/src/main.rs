@@ -33,7 +33,8 @@ fn main() {
         (command == "read" && args.len() == 5) ||
         (command == "tag" && args.len() == 4) ||
         (command == "write" && args.len() == 6) ||
-        (command != "read" && command != "tag" && command != "write" && args.len() == 3);
+        (command == "copy" && args.len() == 4) ||
+        (command != "read" && command != "tag" && command != "write" && command != "copy" && args.len() == 3);
     if !valid {
         println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
         println!("{} {}", args.len(), command);
@@ -233,6 +234,18 @@ fn main() {
             //         unified_diff.push_str("\r\n")
             //     } else if aux_
             // }
+        }
+        "copy" => {
+            if args.len() < 4 {
+                println!("Usage: binrw copy <src> <dest>");
+                return;
+            }
+            let src = &args[2];
+            let dest = &args[3];
+            match std::fs::copy(src, dest) {
+                Ok(_) => println!("Copied {} to {}", src, dest),
+                Err(e) => println!("Failed to copy {} to {}: {}", src, dest, e),
+            }
         }
         _ => {
             println!("Command not recognized!");

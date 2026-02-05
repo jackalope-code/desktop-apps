@@ -3,4 +3,8 @@ name = "binrw-cli"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+hex = "0.4.3"
+sha2 = "0.10.9"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
