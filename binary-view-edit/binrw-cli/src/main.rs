@@ -1,3 +1,44 @@
+// Print help and exit function must be defined before main
+fn print_help_and_exit() {
+    println!("\nUsage:");
+    println!("  binrw read <filename> <start> <end|eof>");
+    println!("  binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof] [--reverse]");
+    println!("  binrw write insert <filename> <offset> <data> [--reverse]");
+    println!("  binrw header <filename>");
+    println!("  binrw new <filename>");
+    println!("  binrw type <filename>");
+    println!("  binrw size <filename>");
+    println!("  binrw metadata <filename>");
+    println!("  binrw copy <src> <dest>");
+    println!("\nNotes:");
+    println!("  Offsets can be negative (from EOF) or 'eof'.");
+    println!("  Use --append-zero-past-eof to pad with zeros when writing past EOF.");
+    println!("  Use --reverse to reverse data before writing/inserting.");
+    std::process::exit(2);
+}
+/// # binrw CLI Usage
+///
+/// ## Write/Overwrite/Insert
+///
+/// - `binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof] [--reverse]`
+/// - `binrw write insert <filename> <offset> <data> [--reverse]`
+///
+/// - If `--append-zero-past-eof` is set, writing past EOF pads with zeros and appends data.
+/// - If `--reverse` is set, the data is reversed before writing/inserting.
+/// - If a descending range is passed (e.g., `binrw write overwrite file stop start data` where stop > start), the CLI automatically flips the indices and reverses the data, as if `--reverse` was specified.
+///
+/// ## Examples
+///
+/// - `binrw write overwrite file.txt 1000 foo --append-zero-past-eof` (pads with zeros and appends "foo" at offset 1000)
+/// - `binrw write overwrite file.txt 5 2 foo` (overwrites from index 2 to 5 with "oof")
+/// - `binrw write overwrite file.txt 2 foo --reverse` (overwrites at index 2 with "oof")
+/// - `binrw write insert file.txt 3 foo --reverse` (inserts "oof" at index 3)
+///
+/// ## Notes
+///
+/// - Negative offsets are supported (e.g., -3 means 3 bytes from EOF).
+/// - If an invalid/descending range is passed without `--reverse`, the CLI will treat it as reversed.
+/// - All behaviors are tested in the test suite.
 use binrw_cli::{read_range, read_range_i64_negative_start, read_bytes, read_bytes_file};
 use std::env;
 use std::fs;
@@ -13,9 +54,6 @@ use std::io::Write as IoWrite;
 mod utils;
 
 fn main() {
-    // Debug log CLI arguments
-    use std::fs::OpenOptions;
-    use std::io::Write as IoWrite;
     let args: Vec<String> = env::args().collect();
     if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
         let _ = writeln!(log, "ARGS: {:?}", args);
@@ -46,11 +84,51 @@ fn main() {
         (command == "copy" && args.len() == 4) ||
         (command != "read" && command != "tag" && command != "write" && command != "copy" && args.len() == 3);
     if !valid {
-        println!("Expected usage: binrw read|write|header|type|size|metadata [filename]");
-        println!("{} {}", args.len(), command);
-        std::process::exit(1);
+        print_help_and_exit();
     }
     let filename = if command == "write" {&args[3]} else {&args[2]};
+
+    // Validate numeric arguments for read/write
+    if command == "read" {
+        if args[3].to_lowercase() != "eof" && args[4].to_lowercase() != "eof" {
+            if args[3].parse::<i64>().is_err() || args[4].parse::<i64>().is_err() {
+                eprintln!("Error: Offsets must be numbers or 'eof'.");
+                print_help_and_exit();
+            }
+        }
+    }
+    if command == "write" {
+        // write overwrite/insert <filename> <offset> <data>
+        // args[4] is offset, args[5] is data
+        if args[4].to_lowercase() != "eof" && args[4].parse::<i64>().is_err() {
+            eprintln!("Error: Offset must be a number or 'eof'.");
+            print_help_and_exit();
+        }
+        // If extra args for range, check those too
+        if args.len() > 6 {
+            if args[5].parse::<i64>().is_err() || args[4].parse::<i64>().is_err() {
+                eprintln!("Error: Offsets must be numbers.");
+                print_help_and_exit();
+            }
+        }
+    }
+
+    let debug_enabled = args.iter().any(|a| a == "--debug");
+    // New flag for overwrite behavior
+    let append_zero_past_eof = args.iter().any(|a| a == "--append-zero-past-eof");
+    // New flag for reverse write/overwrite
+    let mut reverse_flag = args.iter().any(|a| a == "--reverse");
+
+    macro_rules! debug_log {
+        ($($arg:tt)*) => {
+            if debug_enabled {
+                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                    let _ = writeln!(log, $($arg)*);
+                }
+            }
+        }
+    }
+    debug_log!("ARGS: {:?}", args);
 
     // TODO: Add tests.
     // Tests:
@@ -82,6 +160,8 @@ fn main() {
     let debug_enabled = args.iter().any(|a| a == "--debug");
     // New flag for overwrite behavior
     let append_zero_past_eof = args.iter().any(|a| a == "--append-zero-past-eof");
+    // New flag for reverse write/overwrite
+    let mut reverse_flag = args.iter().any(|a| a == "--reverse");
     macro_rules! debug_log {
         ($($arg:tt)*) => {
             if debug_enabled {
@@ -165,52 +245,188 @@ fn main() {
                 Ok(_) => println!("Created new file: {}", filename),
                 Err(e) => println!("Failed to create file {}: {}", filename, e),
             }
-        }
+        },
         "write" | "-w" => {
             println!("Write");
             // Specify write splice or write overwrite with the write command (so 6 args total).
             let aux_arg1 = &args[2]; // splice or overwrite
-            let _aux_arg2 = &args[4]; // 4 position
+            let _aux_arg2 = &args[4]; // 4 position (start or stop)
             let _aux_arg3 = &args[5]; // 5 data
+            let mut start_offset = _aux_arg2;
+            let mut stop_offset = None;
+            let mut data = _aux_arg3.to_string();
+            // Handle descending range or --reverse for overwrite/insert
+            // If two offsets are provided (overwrite with range), check if descending
+            if args.len() > 6 {
+                let possible_stop = &args[4];
+                let possible_start = &args[5];
+                if let (Ok(stop), Ok(start)) = (possible_stop.parse::<i64>(), possible_start.parse::<i64>()) {
+                    // Always use lower as start, higher as stop
+                    if stop > start {
+                        start_offset = possible_start;
+                        stop_offset = Some(possible_stop);
+                        reverse_flag = true; // Mark for reversal, but only reverse ONCE below
+                        debug_log!("Detected descending range: stop {} > start {}. Swapping and reversing data.", stop, start);
+                    } else {
+                        start_offset = possible_stop;
+                        stop_offset = Some(possible_start);
+                    }
+                }
+            }
+            // If --reverse is set, reverse the data
+            let mut reversed_for_range = false;
+            if reverse_flag {
+                debug_log!("Reversing data for write/overwrite/insert: before='{}'", data);
+                data = data.chars().rev().collect();
+                debug_log!("Reversed data: after='{}'", data);
+            }
             match aux_arg1.as_str() {
                 "overwrite" => {
-                    if _aux_arg2 == "eof" {
+                    if let Some(stop_offset_str) = stop_offset {
+                        // Comprehensive overwrite: always replace at the lower offset, data reversed if needed
+                        let file = File::open(filename).expect("Error opening file for write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len() as i64;
+                        let start_i64 = start_offset.parse::<i64>().unwrap_or(0);
+                        let stop_i64 = stop_offset_str.parse::<i64>().unwrap_or(0);
+                        let resolved_start = if start_i64 < 0 {
+                            let off = file_size + start_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            start_i64
+                        } as u64;
+                        let resolved_stop = if stop_i64 < 0 {
+                            let off = file_size + stop_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            stop_i64
+                        } as u64;
+                        let (range_start, range_end, is_descending) = if resolved_start <= resolved_stop {
+                            (resolved_start, resolved_stop, false)
+                        } else {
+                            (resolved_stop, resolved_start, true)
+                        };
+                        // Only reverse ONCE: either for --reverse or descending, not both
+                        let mut data_to_write = data.clone();
+                        if is_descending && !reverse_flag {
+                            data_to_write = data_to_write.chars().rev().collect();
+                        }
+                        debug_log!("[overwrite comprehensive] range: {} to {} (data_len {}), data='{}'", range_start, range_end, data_to_write.len(), data_to_write);
+                        let mut buffer = fs::read(filename).unwrap_or_default();
+                        let start_idx = range_start as usize;
+                        let end_idx = start_idx + data_to_write.len();
+                        if start_idx >= buffer.len() {
+                            // Past EOF
+                            if append_zero_past_eof {
+                                buffer.resize(start_idx, 0);
+                                buffer.extend_from_slice(data_to_write.as_bytes());
+                                match fs::write(filename, &buffer) {
+                                    Ok(_) => debug_log!("[overwrite comprehensive] Appended zeros and data past EOF for {}. New len: {}. Data: {:?}", filename, buffer.len(), data_to_write.as_bytes()),
+                                    Err(e) => {
+                                        debug_log!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
+                                        panic!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
+                                    }
+                                }
+                            } else {
+                                debug_log!("[overwrite comprehensive] Not appending, no change for {}", filename);
+                            }
+                        } else {
+                            // In file: replace exactly data_to_write.len() bytes, always starting at lower index
+                            let actual_end = (start_idx + data_to_write.len()).min(buffer.len());
+                            let overwrite_len = actual_end.saturating_sub(start_idx);
+                            if overwrite_len > 0 {
+                                buffer.splice(start_idx..actual_end, data_to_write.as_bytes()[..overwrite_len].iter().cloned());
+                            }
+                            // If data is longer than the range, append the rest
+                            if actual_end < start_idx + data_to_write.len() {
+                                buffer.extend_from_slice(&data_to_write.as_bytes()[overwrite_len..]);
+                            }
+                            match fs::write(filename, &buffer) {
+                                Ok(_) => debug_log!("[overwrite comprehensive] Overwrote in-place from {} to {} for {}. Data: {:?}", start_idx, actual_end, filename, &data_to_write.as_bytes()),
+                                Err(e) => {
+                                    debug_log!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
+                                }
+                            }
+                        }
+                    } else if start_offset == "eof" {
                         let file = File::open(filename).expect("Error opening file for eof write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len();
-                        write_overwrite(filename, file_size.try_into().unwrap(), _aux_arg3.to_string(), append_zero_past_eof)
+                        debug_log!("Overwrite at EOF (offset {}), data='{}'", file_size, data);
+                        write_overwrite(filename, file_size.try_into().unwrap(), data, append_zero_past_eof)
                     } else {
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len() as i64;
-                        let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
+                        let offset_i64 = start_offset.parse::<i64>().unwrap_or(0);
                         let resolved_offset = if offset_i64 < 0 {
                             let off = file_size + offset_i64;
                             if off < 0 { 0 } else { off }
                         } else {
                             offset_i64
                         } as u64;
-                        write_overwrite(filename, resolved_offset, _aux_arg3.to_string(), append_zero_past_eof)
+                        debug_log!("Overwrite at offset {}, data='{}'", resolved_offset, data);
+                        write_overwrite(filename, resolved_offset, data, append_zero_past_eof)
                     }
                 },
                 "insert" => {
-                    if _aux_arg2 == "eof" {
+                    if let Some(stop_offset_str) = stop_offset {
+                        // Comprehensive insert: always insert at the lower offset, data reversed if needed
+                        let file = File::open(filename).expect("Error opening file for write command");
+                        let metadata = file.metadata().unwrap();
+                        let file_size = metadata.len() as i64;
+                        let start_i64 = start_offset.parse::<i64>().unwrap_or(0);
+                        let stop_i64 = stop_offset_str.parse::<i64>().unwrap_or(0);
+                        let resolved_start = if start_i64 < 0 {
+                            let off = file_size + start_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            start_i64
+                        } as u64;
+                        let resolved_stop = if stop_i64 < 0 {
+                            let off = file_size + stop_i64;
+                            if off < 0 { 0 } else { off }
+                        } else {
+                            stop_i64
+                        } as u64;
+                        let (range_start, range_end, is_descending) = if resolved_start <= resolved_stop {
+                            (resolved_start, resolved_stop, false)
+                        } else {
+                            (resolved_stop, resolved_start, true)
+                        };
+                        // Only reverse ONCE: either for --reverse or descending, not both
+                        let mut data_to_write = data.clone();
+                        if is_descending && !reverse_flag {
+                            data_to_write = data_to_write.chars().rev().collect();
+                        }
+                        debug_log!("[insert comprehensive] Insert at {}, data='{}' (data_len {})", range_start, data_to_write, data_to_write.len());
+                        write_insert(filename, range_start, data_to_write)
+                    } else if start_offset == "eof" {
                         let file = File::open(filename).expect("Error opening file for eof write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len();
-                        write_insert(filename, file_size.try_into().unwrap(), _aux_arg3.to_string())
+                        debug_log!("Insert at EOF (offset {}), data='{}'", file_size, data);
+                        write_insert(filename, file_size.try_into().unwrap(), data)
                     } else {
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len() as i64;
-                        let offset_i64 = _aux_arg2.parse::<i64>().unwrap_or(0);
+                        let offset_i64 = start_offset.parse::<i64>().unwrap_or(0);
                         let resolved_offset = if offset_i64 < 0 {
                             let off = file_size + offset_i64;
                             if off < 0 { 0 } else { off }
                         } else {
                             offset_i64
                         } as u64;
-                        write_insert(filename, resolved_offset, _aux_arg3.to_string())
+                        let mut data_to_write = data.clone();
+                        if reverse_flag {
+                            debug_log!("[insert single-offset] Reversing data for --reverse: before='{}'", data_to_write);
+                            data_to_write = data_to_write.chars().rev().collect();
+                            debug_log!("[insert single-offset] Reversed data: after='{}'", data_to_write);
+                        }
+                        debug_log!("[insert single-offset] start_offset='{}' parsed offset_i64={}, resolved_offset={}, data='{}' (len={})", start_offset, offset_i64, resolved_offset, data_to_write, data_to_write.len());
+                        write_insert(filename, resolved_offset, data_to_write)
                     }
                 },
                 _ => {
@@ -378,104 +594,107 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 /// If the offset is within the file, replaces bytes up to the length of data.
 /// Usage: binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof]
 fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, append_zero_past_eof: bool) {
+    let debug_enabled = std::env::args().any(|a| a == "--debug");
+    macro_rules! debug_log_inner {
+        ($($arg:tt)*) => {
+            if debug_enabled {
+                if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                    let _ = writeln!(log, $($arg)*);
+                }
+            }
+        }
+    }
     let mut buffer = fs::read(filename).unwrap_or_default();
     let file_len = buffer.len();
-    let mut start = start_byte_inclusive as isize;
+    let start = start_byte_inclusive as usize;
     let data_bytes = data.as_bytes();
+    debug_log_inner!("[write_overwrite] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={})", String::from_utf8_lossy(&buffer), file_len, start, data, data.len());
     if data_bytes.is_empty() {
+        debug_log_inner!("[write_overwrite] No data to write, skipping modification for {}", filename);
         return;
     }
-
-    // If start is negative, overwrite from that offset to EOF, replacing all bytes from that offset to EOF with data
-    if start < 0 {
-        start = file_len as isize + start;
-        if start < 0 {
-            start = 0;
-        }
-        let start_usize = start as usize;
-        // Block if start is past EOF (invalid negative offset)
-        if start_usize > file_len {
-            return;
-        }
-        // If the data would go past EOF, truncate to file end
-        let max_len = file_len - start_usize;
-        let data_to_write = if data_bytes.len() > max_len {
-            &data_bytes[..max_len]
-        } else {
-            data_bytes
-        };
-        buffer.truncate(start_usize);
-        buffer.extend_from_slice(data_to_write);
-        let _ = fs::write(filename, buffer);
-        return;
-    }
-
-    let start = start as usize;
-    let end = start + data_bytes.len();
-
-    // Block descending/invalid overwrites
-    if end <= start {
-        return;
-    }
-
-    // If start is past EOF
-    if start > buffer.len() {
+    debug_log_inner!("[write_overwrite] file_len={}, start={}, data_len={}, filename={}", file_len, start, data_bytes.len(), filename);
+    if start > file_len {
         if append_zero_past_eof {
             buffer.resize(start, 0);
             buffer.extend_from_slice(data_bytes);
-            let _ = fs::write(filename, buffer);
+            debug_log_inner!("[write_overwrite] AFTER (padded): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
+            match fs::write(filename, &buffer) {
+                Ok(_) => debug_log_inner!("[write_overwrite] Appended zeros and data past EOF for {}. New len: {}. Data: {:?}", filename, buffer.len(), data_bytes),
+                Err(e) => {
+                    debug_log_inner!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+                    panic!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+                }
+            }
+        } else {
+            debug_log_inner!("[write_overwrite] Not appending, no change for {}", filename);
         }
-        // If not appending, do nothing
-        return;
-    }
-
-    if start == buffer.len() {
-        buffer.extend_from_slice(data_bytes);
     } else {
-        // Overwrite up to EOF, do not append past EOF
-        let overwrite_end = end.min(buffer.len());
-        buffer.splice(start..overwrite_end, data_bytes[..(overwrite_end-start)].iter().cloned());
+        let actual_end = (start + data_bytes.len()).min(buffer.len());
+        let overwrite_len = actual_end.saturating_sub(start);
+        if overwrite_len > 0 {
+            buffer.splice(start..actual_end, data_bytes[..overwrite_len].iter().cloned());
+        }
+        if actual_end < start + data_bytes.len() {
+            buffer.extend_from_slice(&data_bytes[overwrite_len..]);
+        }
+        match fs::write(filename, &buffer) {
+            Ok(_) => debug_log_inner!("[write_overwrite] Overwrote in-place from {} to {} for {}. Data: {:?}", start, actual_end, filename, &data_bytes[..overwrite_len]),
+            Err(e) => {
+                debug_log_inner!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+                panic!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+            }
+        }
     }
-    let _ = fs::write(filename, buffer);
 }
 
 /// Insert bytes into a file at the given offset, shifting existing data to the right.
 /// The file size increases by the length of the inserted data.
 /// Usage: binrw write insert <filename> <offset> <data>
 fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
-    let mut file = File::options().read(true).write(true).open(filename).unwrap();
-    // let seekable = file.seek(SeekFrom::Start(start_byte_inclusive+1));
-    println!("Opening file for write_insert");
-    // println!("Planning to read {} bytes, starting from {}", data.len(), start_byte_inclusive);
-    // let buf = read_bytes_file(&file, start_byte_inclusive, data.len())
-    let metadata = file.metadata().unwrap();
-    let file_size = metadata.len();
-    // let should_append_file_data = file_size == 0;
+    let debug_enabled = std::env::args().any(|a| a == "--debug");
+    macro_rules! debug_log_inner {
+        ($($arg:tt)*) => {
+            if debug_enabled {
+                if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open("debug_log.txt") {
+                    let _ = writeln!(log, $($arg)*);
+                }
+            }
+        }
+    }
+    let mut buffer = fs::read(filename).unwrap_or_default();
+    let file_len = buffer.len();
+    let start = start_byte_inclusive as usize;
+    let data_bytes = data.as_bytes();
+    debug_log_inner!("[write_insert] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={})", String::from_utf8_lossy(&buffer), file_len, start, data, data.len());
+    if data_bytes.is_empty() {
+        debug_log_inner!("[write_insert] No data to insert, skipping modification for {}", filename);
+        return;
+    }
+    debug_log_inner!("[write_insert] file_len={}, start={}, data_len={}, filename={}", file_len, start, data_bytes.len(), filename);
 
-    if file_size > 0 {
-        // TODO: Some issue where buf_size is doubled or loading when it should be 0. So just skip conditionally on buf_size
-        let buf_size: u64 = file_size - start_byte_inclusive; // - (data.len() as u64); // Shouldn't be <0 (I hope)
-        if buf_size > 0 {
-            println!("BUF SIZE: {}", buf_size);
-            let mut buf = vec![0u8; buf_size.try_into().unwrap()];
-            let read_size = file.read_to_end(&mut buf).unwrap();
-            println!("Read {} bytes starting from {}. File size {}.", read_size, start_byte_inclusive, file_size);
-            println!("Buffer size {}", buf.len()); // TODO: Why is this double BUF SIZE?
-            println!("Seek to {}", start_byte_inclusive);
-            let _ = file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
-            println!("Write data to insert at {} bytes", data.as_bytes().len());
-            println!("\"{:?}\"", data.as_bytes());
-            let _ = file.write(data.as_bytes());
-            println!("Write remaining buf: {:?}", &buf);
-            let _ = file.write(&buf[buf.len()-read_size..]); // TODO: WHY DO I NEED THIS HACK?!?!
-        } else {
-            let _ = file.seek(SeekFrom::Start(start_byte_inclusive.try_into().unwrap()));
-            let _ = file.write(data.as_bytes());
+    if start > file_len {
+        buffer.resize(start, 0);
+        buffer.extend_from_slice(data_bytes);
+        debug_log_inner!("[write_insert] AFTER (padded): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
+        match fs::write(filename, &buffer) {
+            Ok(_) => debug_log_inner!("[write_insert] Inserted past EOF for {}. Padded with zeros. New len: {}. Data: {:?}", filename, buffer.len(), data_bytes),
+            Err(e) => {
+                debug_log_inner!("[write_insert] ERROR writing file {}: {}", filename, e);
+                panic!("[write_insert] ERROR writing file {}: {}", filename, e);
+            }
         }
     } else {
-        let _ = file.write(data.as_bytes());
+        buffer.splice(start..start, data_bytes.iter().cloned());
+        debug_log_inner!("[write_insert] AFTER (in-place): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
+        match fs::write(filename, &buffer) {
+            Ok(_) => debug_log_inner!("[write_insert] Inserted at offset {} for {}. Data: {:?}", start, filename, data_bytes),
+            Err(e) => {
+                debug_log_inner!("[write_insert] ERROR writing file {}: {}", filename, e);
+                panic!("[write_insert] ERROR writing file {}: {}", filename, e);
+            }
+        }
     }
-    // }
 }
 
 fn detect_jpg(file_id_info: &FileIDInfo) -> bool {
@@ -578,16 +797,21 @@ let exe_bytes = get_owned_str_vec(vec!["4d", "5a"]);
 // 7z file (37 7a bc af 27 1c)
 // println!("Java bytecode: {}", java_bytecode);
 
-    let file_type: &str = match id_info {
-        id_info if detect_jpg(&id_info) => {return "jpg"},
-        id_info if id_info.first_four_bytes == png_bytes => {return "png"},
-        id_info if id_info.first_four_bytes == gif_bytes => {return "gif"},
-        id_info if id_info.first_two_bytes == bmp_bytes => {return "bmp"},
-        id_info if id_info.first_two_bytes == exe_bytes => {return "exe"}
-        id_info if detect_javac(&id_info) => {return "class"}
-        _ => "unknown",
-    };
-    return file_type;
+    if detect_jpg(&id_info) {
+        return "jpg";
+    } else if id_info.first_four_bytes == png_bytes {
+        return "png";
+    } else if id_info.first_four_bytes == gif_bytes {
+        return "gif";
+    } else if id_info.first_two_bytes == bmp_bytes {
+        return "bmp";
+    } else if id_info.first_two_bytes == exe_bytes {
+        return "exe";
+    } else if detect_javac(&id_info) {
+        return "class";
+    } else {
+        return "unknown";
+    }
 }
 
 fn get_owned_str_vec(array: Vec<&str>) -> Vec<String> {

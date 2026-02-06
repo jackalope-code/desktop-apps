@@ -1,3 +1,4 @@
 target
 local
 *.test.*
+debug_log
