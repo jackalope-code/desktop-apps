@@ -2,7 +2,7 @@
 fn print_help_and_exit() {
     println!("\nUsage:");
     println!("  binrw read <filename> <start> <end|eof>");
-    println!("  binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof] [--reverse]");
+    println!("  binrw write overwrite <filename> <offset> <data> [--write-past-eof] [--reverse]");
     println!("  binrw write insert <filename> <offset> <data> [--reverse]");
     println!("  binrw header <filename>");
     println!("  binrw new <filename>");
@@ -12,7 +12,7 @@ fn print_help_and_exit() {
     println!("  binrw copy <src> <dest>");
     println!("\nNotes:");
     println!("  Offsets can be negative (from EOF) or 'eof'.");
-    println!("  Use --append-zero-past-eof to pad with zeros when writing past EOF.");
+    println!("  Use --write-past-eof to allow writing past EOF in overwrite mode.");
     println!("  Use --reverse to reverse data before writing/inserting.");
     std::process::exit(2);
 }
@@ -20,16 +20,16 @@ fn print_help_and_exit() {
 ///
 /// ## Write/Overwrite/Insert
 ///
-/// - `binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof] [--reverse]`
+/// - `binrw write overwrite <filename> <offset> <data> [--write-past-eof] [--reverse]`
 /// - `binrw write insert <filename> <offset> <data> [--reverse]`
 ///
-/// - If `--append-zero-past-eof` is set, writing past EOF pads with zeros and appends data.
+/// - If `--write-past-eof` is set, writing past EOF pads with zeros and appends data in overwrite mode.
 /// - If `--reverse` is set, the data is reversed before writing/inserting.
 /// - If a descending range is passed (e.g., `binrw write overwrite file stop start data` where stop > start), the CLI automatically flips the indices and reverses the data, as if `--reverse` was specified.
 ///
 /// ## Examples
 ///
-/// - `binrw write overwrite file.txt 1000 foo --append-zero-past-eof` (pads with zeros and appends "foo" at offset 1000)
+/// - `binrw write overwrite file.txt 1000 foo --write-past-eof` (pads with zeros and appends "foo" at offset 1000)
 /// - `binrw write overwrite file.txt 5 2 foo` (overwrites from index 2 to 5 with "oof")
 /// - `binrw write overwrite file.txt 2 foo --reverse` (overwrites at index 2 with "oof")
 /// - `binrw write insert file.txt 3 foo --reverse` (inserts "oof" at index 3)
@@ -115,7 +115,7 @@ fn main() {
 
     let debug_enabled = args.iter().any(|a| a == "--debug");
     // New flag for overwrite behavior
-    let append_zero_past_eof = args.iter().any(|a| a == "--append-zero-past-eof");
+    let write_past_eof = args.iter().any(|a| a == "--write-past-eof");
     // New flag for reverse write/overwrite
     let mut reverse_flag = args.iter().any(|a| a == "--reverse");
 
@@ -159,7 +159,7 @@ fn main() {
     // Debug flag and macro at top of main
     let debug_enabled = args.iter().any(|a| a == "--debug");
     // New flag for overwrite behavior
-    let append_zero_past_eof = args.iter().any(|a| a == "--append-zero-past-eof");
+    let write_past_eof = args.iter().any(|a| a == "--write-past-eof");
     // New flag for reverse write/overwrite
     let mut reverse_flag = args.iter().any(|a| a == "--reverse");
     macro_rules! debug_log {
@@ -257,6 +257,7 @@ fn main() {
             let mut data = _aux_arg3.to_string();
             // Handle descending range or --reverse for overwrite/insert
             // If two offsets are provided (overwrite with range), check if descending
+            let mut should_reverse = reverse_flag;
             if args.len() > 6 {
                 let possible_stop = &args[4];
                 let possible_start = &args[5];
@@ -265,17 +266,18 @@ fn main() {
                     if stop > start {
                         start_offset = possible_start;
                         stop_offset = Some(possible_stop);
-                        reverse_flag = true; // Mark for reversal, but only reverse ONCE below
+                        // Always reverse for descending range
+                        should_reverse = true;
                         debug_log!("Detected descending range: stop {} > start {}. Swapping and reversing data.", stop, start);
                     } else {
                         start_offset = possible_stop;
                         stop_offset = Some(possible_start);
+                        should_reverse = reverse_flag;
                     }
                 }
             }
-            // If --reverse is set, reverse the data
-            let mut reversed_for_range = false;
-            if reverse_flag {
+            // Reverse the data only once if needed
+            if should_reverse {
                 debug_log!("Reversing data for write/overwrite/insert: before='{}'", data);
                 data = data.chars().rev().collect();
                 debug_log!("Reversed data: after='{}'", data);
@@ -283,79 +285,80 @@ fn main() {
             match aux_arg1.as_str() {
                 "overwrite" => {
                     if let Some(stop_offset_str) = stop_offset {
-                        // Comprehensive overwrite: always replace at the lower offset, data reversed if needed
+                        // Range overwrite: handle negative/positive/descending, clamp to [0, file.len()]
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len() as i64;
                         let start_i64 = start_offset.parse::<i64>().unwrap_or(0);
                         let stop_i64 = stop_offset_str.parse::<i64>().unwrap_or(0);
-                        let resolved_start = if start_i64 < 0 {
-                            let off = file_size + start_i64;
-                            if off < 0 { 0 } else { off }
+                        let mut resolved_start = if start_i64 < 0 {
+                            file_size + start_i64
                         } else {
                             start_i64
-                        } as u64;
-                        let resolved_stop = if stop_i64 < 0 {
-                            let off = file_size + stop_i64;
-                            if off < 0 { 0 } else { off }
+                        };
+                        let mut resolved_stop = if stop_i64 < 0 {
+                            file_size + stop_i64
                         } else {
                             stop_i64
-                        } as u64;
-                        let (range_start, range_end, is_descending) = if resolved_start <= resolved_stop {
-                            (resolved_start, resolved_stop, false)
-                        } else {
-                            (resolved_stop, resolved_start, true)
                         };
-                        // Only reverse ONCE: either for --reverse or descending, not both
+                        // Clamp to [0, file_size]
+                        resolved_start = resolved_start.max(0).min(file_size);
+                        resolved_stop = resolved_stop.max(0).min(file_size);
                         let mut data_to_write = data.clone();
-                        if is_descending && !reverse_flag {
-                            data_to_write = data_to_write.chars().rev().collect();
-                        }
-                        debug_log!("[overwrite comprehensive] range: {} to {} (data_len {}), data='{}'", range_start, range_end, data_to_write.len(), data_to_write);
-                        let mut buffer = fs::read(filename).unwrap_or_default();
-                        let start_idx = range_start as usize;
-                        let end_idx = start_idx + data_to_write.len();
-                        if start_idx >= buffer.len() {
-                            // Past EOF
-                            if append_zero_past_eof {
-                                buffer.resize(start_idx, 0);
-                                buffer.extend_from_slice(data_to_write.as_bytes());
-                                match fs::write(filename, &buffer) {
-                                    Ok(_) => debug_log!("[overwrite comprehensive] Appended zeros and data past EOF for {}. New len: {}. Data: {:?}", filename, buffer.len(), data_to_write.as_bytes()),
-                                    Err(e) => {
-                                        debug_log!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
-                                        panic!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
-                                    }
-                                }
-                            } else {
-                                debug_log!("[overwrite comprehensive] Not appending, no change for {}", filename);
-                            }
+                        let (start_idx, stop_idx, do_reverse) = if resolved_start <= resolved_stop {
+                            (resolved_start as usize, resolved_stop as usize, false)
                         } else {
-                            // In file: replace exactly data_to_write.len() bytes, always starting at lower index
-                            let actual_end = (start_idx + data_to_write.len()).min(buffer.len());
-                            let overwrite_len = actual_end.saturating_sub(start_idx);
-                            if overwrite_len > 0 {
-                                buffer.splice(start_idx..actual_end, data_to_write.as_bytes()[..overwrite_len].iter().cloned());
+                            (resolved_stop as usize, resolved_start as usize, true)
+                        };
+                        let mut buffer = fs::read(filename).unwrap_or_default();
+                        // If descending and start_idx > stop_idx, do not change file (invalid range)
+                        if start_idx >= buffer.len() || stop_idx > buffer.len() || start_idx == stop_idx || (do_reverse && start_idx > stop_idx) {
+                            debug_log!("[overwrite range] Out of bounds or invalid/descending range ({}..{}), no change for {}", start_idx, stop_idx, filename);
+                            return;
+                        }
+                        // For descending, always reverse data and map left-to-right in file
+                        let overwrite_len = (stop_idx - start_idx).min(data_to_write.len());
+                        // For descending, always reverse data and write left-to-right at lower index
+                        let mut data_bytes = data_to_write.clone().into_bytes();
+                        if do_reverse {
+                            // Aggressive fix: reverse data exactly once if descending or --reverse, but not both
+                            if do_reverse ^ reverse_flag {
+                                data_bytes.reverse();
                             }
-                            // If data is longer than the range, append the rest
-                            if actual_end < start_idx + data_to_write.len() {
-                                buffer.extend_from_slice(&data_to_write.as_bytes()[overwrite_len..]);
+                        }
+                        // Always map data left-to-right in file, regardless of range direction
+                        // Only write if range is valid (start < stop)
+                        if overwrite_len > 0 {
+                            for i in 0..overwrite_len {
+                                buffer[start_idx + i] = data_bytes[i];
                             }
                             match fs::write(filename, &buffer) {
-                                Ok(_) => debug_log!("[overwrite comprehensive] Overwrote in-place from {} to {} for {}. Data: {:?}", start_idx, actual_end, filename, &data_to_write.as_bytes()),
+                                Ok(_) => debug_log!("[overwrite range] Overwrote in bounds for {}. Data: {:?}", filename, &data_bytes[..overwrite_len]),
                                 Err(e) => {
-                                    debug_log!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
-                                    panic!("[overwrite comprehensive] ERROR writing file {}: {}", filename, e);
+                                    debug_log!("[overwrite range] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite range] ERROR writing file {}: {}", filename, e);
                                 }
                             }
+                        } else {
+                            debug_log!("[overwrite range] No valid range to write for {}", filename);
                         }
                     } else if start_offset == "eof" {
-                        let file = File::open(filename).expect("Error opening file for eof write command");
-                        let metadata = file.metadata().unwrap();
-                        let file_size = metadata.len();
-                        debug_log!("Overwrite at EOF (offset {}), data='{}'", file_size, data);
-                        write_overwrite(filename, file_size.try_into().unwrap(), data, append_zero_past_eof)
+                        // Overwrite at EOF: always append, reverse if --reverse
+                        let mut data_to_write = data.clone();
+                        if reverse_flag {
+                            data_to_write = data_to_write.chars().rev().collect();
+                        }
+                        let mut buffer = fs::read(filename).unwrap_or_default();
+                        buffer.extend_from_slice(data_to_write.as_bytes());
+                        match fs::write(filename, &buffer) {
+                            Ok(_) => debug_log!("[overwrite eof] Appended data at EOF for {}. Data: {:?}", filename, data_to_write.as_bytes()),
+                            Err(e) => {
+                                debug_log!("[overwrite eof] ERROR writing file {}: {}", filename, e);
+                                panic!("[overwrite eof] ERROR writing file {}: {}", filename, e);
+                            }
+                        }
                     } else {
+                        // Single offset: reverse if --reverse
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len() as i64;
@@ -366,13 +369,63 @@ fn main() {
                         } else {
                             offset_i64
                         } as u64;
-                        debug_log!("Overwrite at offset {}, data='{}'", resolved_offset, data);
-                        write_overwrite(filename, resolved_offset, data, append_zero_past_eof)
+                        let mut data_to_write = data.clone();
+                        if reverse_flag {
+                            data_to_write = data_to_write.chars().rev().collect();
+                        }
+                        let mut buffer = fs::read(filename).unwrap_or_default();
+                        let start_idx = resolved_offset as usize;
+                        if start_idx < buffer.len() {
+                            // Overwrite up to EOF, do NOT append remainder unless write_past_eof is set
+                            let max_write = buffer.len() - start_idx;
+                            let data_bytes = data_to_write.as_bytes();
+                            if data_bytes.len() <= max_write {
+                                // All fits in overwrite
+                                buffer.splice(start_idx..start_idx+data_bytes.len(), data_bytes.iter().cloned());
+                            } else {
+                                // Overwrite to EOF only
+                                buffer.splice(start_idx.., data_bytes[..max_write].iter().cloned());
+                                // Only append remainder if write_past_eof is set
+                                if write_past_eof {
+                                    buffer.extend_from_slice(&data_bytes[max_write..]);
+                                }
+                            }
+                            match fs::write(filename, &buffer) {
+                                Ok(_) => debug_log!("[overwrite single-offset] Overwrote to EOF{} for {}. Data: {:?}", if write_past_eof {" and appended"} else {""}, filename, data_bytes),
+                                Err(e) => {
+                                    debug_log!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                }
+                            }
+                        } else if start_idx == buffer.len() {
+                            // Append at EOF
+                            buffer.extend_from_slice(data_to_write.as_bytes());
+                            match fs::write(filename, &buffer) {
+                                Ok(_) => debug_log!("[overwrite single-offset] Appended at EOF for {}. Data: {:?}", filename, data_to_write.as_bytes()),
+                                Err(e) => {
+                                    debug_log!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                }
+                            }
+                        } else if write_past_eof {
+                            // Pad with zeros and append
+                            buffer.resize(start_idx, 0);
+                            buffer.extend_from_slice(data_to_write.as_bytes());
+                            match fs::write(filename, &buffer) {
+                                Ok(_) => debug_log!("[overwrite single-offset] Appended past EOF for {}. Data: {:?}", filename, data_to_write.as_bytes()),
+                                Err(e) => {
+                                    debug_log!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite single-offset] ERROR writing file {}: {}", filename, e);
+                                }
+                            }
+                        } else {
+                            debug_log!("[overwrite single-offset] Offset {} out of bounds and no write_past_eof. No change.", resolved_offset);
+                        }
                     }
                 },
                 "insert" => {
                     if let Some(stop_offset_str) = stop_offset {
-                        // Comprehensive insert: always insert at the lower offset, data reversed if needed
+                        // Insert: handle descending and reversal
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len() as i64;
@@ -390,24 +443,31 @@ fn main() {
                         } else {
                             stop_i64
                         } as u64;
-                        let (range_start, range_end, is_descending) = if resolved_start <= resolved_stop {
+                        let (insert_idx, _range_end, is_descending) = if resolved_start <= resolved_stop {
                             (resolved_start, resolved_stop, false)
                         } else {
                             (resolved_stop, resolved_start, true)
                         };
-                        // Only reverse ONCE: either for --reverse or descending, not both
+                        // For descending, always reverse data and insert at lower index
                         let mut data_to_write = data.clone();
-                        if is_descending && !reverse_flag {
-                            data_to_write = data_to_write.chars().rev().collect();
+                        if is_descending || reverse_flag {
+                            // Aggressive fix: reverse data exactly once if descending or --reverse, but not both
+                            if is_descending ^ reverse_flag {
+                                data_to_write = data_to_write.chars().rev().collect();
+                            }
                         }
-                        debug_log!("[insert comprehensive] Insert at {}, data='{}' (data_len {})", range_start, data_to_write, data_to_write.len());
-                        write_insert(filename, range_start, data_to_write)
+                        debug_log!("[insert comprehensive] Insert at {}, data='{}' (data_len {})", insert_idx, data_to_write, data_to_write.len());
+                        write_insert(filename, insert_idx, data_to_write)
                     } else if start_offset == "eof" {
                         let file = File::open(filename).expect("Error opening file for eof write command");
                         let metadata = file.metadata().unwrap();
                         let file_size = metadata.len();
-                        debug_log!("Insert at EOF (offset {}), data='{}'", file_size, data);
-                        write_insert(filename, file_size.try_into().unwrap(), data)
+                        let mut data_to_write = data.clone();
+                        if reverse_flag {
+                            data_to_write = data_to_write.chars().rev().collect();
+                        }
+                        debug_log!("Insert at EOF (offset {}), data='{}'", file_size, data_to_write);
+                        write_insert(filename, file_size.try_into().unwrap(), data_to_write)
                     } else {
                         let file = File::open(filename).expect("Error opening file for write command");
                         let metadata = file.metadata().unwrap();
@@ -590,10 +650,10 @@ fn read_to_end_i64_negative_offsets(filename: &str, start_byte_inclusive: i64) -
 // }
 
 /// Overwrite bytes in a file at the given offset.
-/// If the offset is past EOF, pads with zeros and appends the data if append_zero_past_eof is true.
+/// If the offset is past EOF, pads with zeros and appends the data if write_past_eof is true.
 /// If the offset is within the file, replaces bytes up to the length of data.
-/// Usage: binrw write overwrite <filename> <offset> <data> [--append-zero-past-eof]
-fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, append_zero_past_eof: bool) {
+/// Usage: binrw write overwrite <filename> <offset> <data> [--write-past-eof]
+fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, write_past_eof: bool) {
     let debug_enabled = std::env::args().any(|a| a == "--debug");
     macro_rules! debug_log_inner {
         ($($arg:tt)*) => {
@@ -608,14 +668,15 @@ fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, appe
     let file_len = buffer.len();
     let start = start_byte_inclusive as usize;
     let data_bytes = data.as_bytes();
-    debug_log_inner!("[write_overwrite] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={})", String::from_utf8_lossy(&buffer), file_len, start, data, data.len());
+    debug_log_inner!("[write_overwrite] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={}), write_past_eof={}, file_len={}", String::from_utf8_lossy(&buffer), file_len, start, data, data.len(), write_past_eof, file_len);
     if data_bytes.is_empty() {
         debug_log_inner!("[write_overwrite] No data to write, skipping modification for {}", filename);
         return;
     }
     debug_log_inner!("[write_overwrite] file_len={}, start={}, data_len={}, filename={}", file_len, start, data_bytes.len(), filename);
     if start > file_len {
-        if append_zero_past_eof {
+        if write_past_eof {
+            // Pad with zeros up to the offset, then append data
             buffer.resize(start, 0);
             buffer.extend_from_slice(data_bytes);
             debug_log_inner!("[write_overwrite] AFTER (padded): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
@@ -627,15 +688,32 @@ fn write_overwrite(filename: &str, start_byte_inclusive: u64, data: String, appe
                 }
             }
         } else {
-            debug_log_inner!("[write_overwrite] Not appending, no change for {}", filename);
+            debug_log_inner!("[write_overwrite] Not writing past EOF, only writing up to EOF for {}", filename);
+            // Only write up to EOF
+            let available = buffer.len().saturating_sub(start);
+            if available > 0 {
+                buffer.splice(start..buffer.len(), data_bytes[..available].iter().cloned());
+                debug_log_inner!("[write_overwrite] buffer after splice up to EOF: {:?}", buffer);
+                match fs::write(filename, &buffer) {
+                    Ok(_) => debug_log_inner!("[write_overwrite] Wrote up to EOF for {}. Data: {:?}", filename, &data_bytes[..available]),
+                    Err(e) => {
+                        debug_log_inner!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+                        panic!("[write_overwrite] ERROR writing file {}: {}", filename, e);
+                    }
+                }
+            } else {
+                debug_log_inner!("[write_overwrite] No space to write up to EOF for {}", filename);
+            }
         }
     } else {
+        // Overwrite in-place, do not append past EOF
         let actual_end = (start + data_bytes.len()).min(buffer.len());
         let overwrite_len = actual_end.saturating_sub(start);
         if overwrite_len > 0 {
             buffer.splice(start..actual_end, data_bytes[..overwrite_len].iter().cloned());
         }
-        if actual_end < start + data_bytes.len() {
+        // If data is longer than the range, append the rest
+        if actual_end < start + data_bytes.len() && (actual_end == buffer.len() && write_past_eof) {
             buffer.extend_from_slice(&data_bytes[overwrite_len..]);
         }
         match fs::write(filename, &buffer) {
@@ -666,7 +744,7 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     let file_len = buffer.len();
     let start = start_byte_inclusive as usize;
     let data_bytes = data.as_bytes();
-    debug_log_inner!("[write_insert] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={})", String::from_utf8_lossy(&buffer), file_len, start, data, data.len());
+    debug_log_inner!("[write_insert] BEFORE: buffer='{}' (len={}), start={}, data='{}' (len={}), file_len={}", String::from_utf8_lossy(&buffer), file_len, start, data, data.len(), file_len);
     if data_bytes.is_empty() {
         debug_log_inner!("[write_insert] No data to insert, skipping modification for {}", filename);
         return;
@@ -674,6 +752,7 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
     debug_log_inner!("[write_insert] file_len={}, start={}, data_len={}, filename={}", file_len, start, data_bytes.len(), filename);
 
     if start > file_len {
+        // Pad with zeros up to the offset, then append data
         buffer.resize(start, 0);
         buffer.extend_from_slice(data_bytes);
         debug_log_inner!("[write_insert] AFTER (padded): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
@@ -684,7 +763,8 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
                 panic!("[write_insert] ERROR writing file {}: {}", filename, e);
             }
         }
-    } else {
+    } else if start <= file_len {
+        // Insert in-place
         buffer.splice(start..start, data_bytes.iter().cloned());
         debug_log_inner!("[write_insert] AFTER (in-place): buffer='{}' (len={})", String::from_utf8_lossy(&buffer), buffer.len());
         match fs::write(filename, &buffer) {
@@ -694,6 +774,9 @@ fn write_insert(filename: &str, start_byte_inclusive: u64, data: String) {
                 panic!("[write_insert] ERROR writing file {}: {}", filename, e);
             }
         }
+    } else {
+        // Invalid range, no change
+        debug_log_inner!("[write_insert] Invalid range, no change for {}", filename);
     }
 }
 

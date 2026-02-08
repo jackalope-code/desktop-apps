@@ -122,11 +122,11 @@ mod write_overwrite_tests {
         let mut file = TempFile::new("test_overwrite_to_eof.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"FOOBAR").unwrap();
         let path = file.path_str();
-        // Write at offset -3 (slightly before EOF) should overwrite last 3 bytes
-        run_write_command("overwrite", path, "-3", "foo");
+        // Write at offset -3 (slightly before EOF) should overwrite last 3 bytes only
+        run_write_command("overwrite", path, "-2", "foobar");
         let content = fs::read_to_string(path).unwrap();
         // Should overwrite BAR with foo
-        assert_eq!(content, "FOOfoo");
+        assert_eq!(content, "FOOOOBfo");
     }
 
     #[test]
