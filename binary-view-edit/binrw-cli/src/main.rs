@@ -321,10 +321,48 @@ fn main() {
                         // For descending, always reverse data and write left-to-right at lower index
                         let mut data_bytes = data_to_write.clone().into_bytes();
                         if do_reverse {
-                            // Aggressive fix: reverse data exactly once if descending or --reverse, but not both
-                            if do_reverse ^ reverse_flag {
-                                data_bytes.reverse();
+                            // Stepwise manual mapping: always map data left-to-right in file, reverse data if needed
+                            let mut mapped_indices = Vec::new();
+                            let mut mapped_data = Vec::new();
+                            let data_len = data_bytes.len();
+                            let file_range = stop_idx - start_idx;
+                            let write_len = file_range.min(data_len);
+                            debug_log!("[overwrite range] start_idx={}, stop_idx={}, do_reverse={}, reverse_flag={}, data_bytes={:?}", start_idx, stop_idx, do_reverse, reverse_flag, data_bytes);
+                            if do_reverse != reverse_flag {
+                                // Reverse data for mapping
+                                for i in 0..write_len {
+                                    let file_i = start_idx + i;
+                                    let data_i = data_len - 1 - i;
+                                    mapped_indices.push(file_i);
+                                    mapped_data.push(data_bytes[data_i]);
+                                    buffer[file_i] = data_bytes[data_i];
+                                    debug_log!(
+                                        "[overwrite range][REVERSE] i={} file_i={} data_i={} byte=0x{:02X} start_idx={} stop_idx={} data_len={} write_len={} filename={}",
+                                        i, file_i, data_i, data_bytes[data_i], start_idx, stop_idx, data_len, write_len, filename
+                                    );
+                                }
+                            } else {
+                                // Normal mapping
+                                for i in 0..write_len {
+                                    let file_i = start_idx + i;
+                                    let data_i = i;
+                                    mapped_indices.push(file_i);
+                                    mapped_data.push(data_bytes[data_i]);
+                                    buffer[file_i] = data_bytes[data_i];
+                                    debug_log!(
+                                        "[overwrite range][NORMAL] i={} file_i={} data_i={} byte=0x{:02X} start_idx={} stop_idx={} data_len={} write_len={} filename={}",
+                                        i, file_i, data_i, data_bytes[data_i], start_idx, stop_idx, data_len, write_len, filename
+                                    );
+                                }
                             }
+                            match fs::write(filename, &buffer) {
+                                Ok(_) => debug_log!("[overwrite range] Overwrote in bounds for {}. Data: {:?}", filename, mapped_data),
+                                Err(e) => {
+                                    debug_log!("[overwrite range] ERROR writing file {}: {}", filename, e);
+                                    panic!("[overwrite range] ERROR writing file {}: {}", filename, e);
+                                }
+                            }
+                            return;
                         }
                         // Always map data left-to-right in file, regardless of range direction
                         // Only write if range is valid (start < stop)
@@ -451,10 +489,16 @@ fn main() {
                         // For descending, always reverse data and insert at lower index
                         let mut data_to_write = data.clone();
                         if is_descending || reverse_flag {
-                            // Aggressive fix: reverse data exactly once if descending or --reverse, but not both
-                            if is_descending ^ reverse_flag {
-                                data_to_write = data_to_write.chars().rev().collect();
+                            // Stepwise manual mapping for insert: always insert at lower index, reverse data if needed
+                            let mut data_bytes = data_to_write.as_bytes().to_vec();
+                            let data_len = data_bytes.len();
+                            debug_log!("[insert] insert_idx={}, is_descending={}, reverse_flag={}, data_bytes={:?}", insert_idx, is_descending, reverse_flag, data_bytes);
+                            if is_descending != reverse_flag {
+                                data_bytes.reverse();
+                                debug_log!("[insert] reversed data_bytes={:?}", data_bytes);
                             }
+                            write_insert(filename, insert_idx, String::from_utf8_lossy(&data_bytes).to_string());
+                            return;
                         }
                         debug_log!("[insert comprehensive] Insert at {}, data='{}' (data_len {})", insert_idx, data_to_write, data_to_write.len());
                         write_insert(filename, insert_idx, data_to_write)
