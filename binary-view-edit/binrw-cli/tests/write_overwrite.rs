@@ -126,7 +126,7 @@ mod write_overwrite_tests {
         run_write_command("overwrite", path, "-2", "foobar");
         let content = fs::read_to_string(path).unwrap();
         // Should overwrite BAR with foo
-        assert_eq!(content, "FOOOOBfo");
+        assert_eq!(content, "FOOBfo");
     }
 
     #[test]

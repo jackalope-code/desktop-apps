@@ -289,6 +289,15 @@ fn main() {
                             buffer[min_idx + i] = data_bytes[i];
                         }
                     }
+                    // If range is past EOF and write_past_eof, pad with zeros and append
+                    if max_idx > buffer.len() && write_past_eof {
+                        buffer.resize(max_idx, 0);
+                        let pad_len = max_idx - min_idx;
+                        let append_len = data_bytes.len().saturating_sub(write_len);
+                        if append_len > 0 {
+                            buffer.extend_from_slice(&data_bytes[write_len..]);
+                        }
+                    }
                     match fs::write(filename, &buffer) {
                         Ok(_) => debug_log!("[overwrite range] Overwrote in bounds for {}. Data: {:?}", filename, &data_bytes[..write_len]),
                         Err(e) => {
