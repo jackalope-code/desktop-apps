@@ -1,0 +1,18 @@
+# Paths that fss should skip when scanning this repo.
+# These files intentionally contain pattern strings or fake test
+# credentials and are not actual secret leaks.
+
+# fss's own rule definitions – the regex literals look like secrets
+fast-secret-scanner/src/patterns.rs
+
+# fss main.rs – doc comment examples triggered user-dir-path in initial commit
+fast-secret-scanner/src/main.rs
+
+# Script that generates patterns.rs – contains the same strings
+fast-secret-scanner/scripts/
+
+# Integration tests – contain known-fake credentials as test fixtures
+fast-secret-scanner/tests/
+
+# Agent skill caches – reference docs installed by Copilot agent; not real code
+binary-view-edit/binrw-cli/.agents/

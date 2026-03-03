@@ -1,15 +1,22 @@
-# Install
+# CLI development
 * git clone https://github.com/jackalope-code/desktop-apps
 * cd binary-view-edit/binrw-cli
 * cargo install
 * cargo run
 
+# Build
+* git clone https://github.com/jackalope-code/desktop-apps
+* cd binary-view-edit/binrw-cli
+* cargo build
+* Use build in target directory
+
 # Test
-* cd into project directory and install (see above)
+* cd into project directory
+* cd binary-view-edit/binrw-cli
 * cargo test
 
 # Bugs from tests
-* Write is bugged with eof write. Eof shouldn't take anything into the buffer... it should just append.
+
 
 # Active To-Do
 * Add file write (with overwrite/~~splice~~ options)
