@@ -1300,3 +1300,11 @@ called read_range_i64_negative_start: filename=test_tempfile.txt start_byte_incl
 called read_range_i64_negative_start: filename=test_tempfile2.txt start_byte_inclusive=2 end_byte_inclusive=5
 start_offset=0 end_offset=3 size=4 buffer_size=4
 start_offset=2 end_offset=5 size=6 buffer_size=4
+called read_range_i64_negative_start: filename=called read_range_i64_negative_start: filename=test_tempfile2.txt start_byte_inclusive=2test_tempfile.txt start_byte_inclusive=0 end_byte_inclusive=3
+ end_byte_inclusive=5
+start_offset=0 end_offset=3 size=4 buffer_size=4
+start_offset=2 end_offset=5 size=6 buffer_size=4
+called read_range_i64_negative_start: filename=test_tempfile.txt start_byte_inclusive=0 end_byte_inclusive=3
+called read_range_i64_negative_start: filename=test_tempfile2.txt start_byte_inclusive=2 end_byte_inclusive=5
+start_offset=start_offset=02 end_offset= end_offset=35 size= size=46 buffer_size= buffer_size=4
+4

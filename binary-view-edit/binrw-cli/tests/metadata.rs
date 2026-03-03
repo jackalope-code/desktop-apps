@@ -1,11 +1,18 @@
 #[cfg(test)]
 mod metadata_tests {
-    use std::process::Command;
     use binrw_cli::utils::tempfile::TempFile;
     use std::io::Write;
 
     fn run_metadata_command(filename: &str) -> String {
-        let output = Command::new("target/debug/binrw-cli.exe")
+        let bin_path = std::env::var("CARGO_BIN_EXE_binrw-cli")
+            .unwrap_or_else(|_| {
+                if cfg!(windows) {
+                    "target\\debug\\binrw-cli.exe".to_string()
+                } else {
+                    "target/debug/binrw-cli".to_string()
+                }
+            });
+        let output = std::process::Command::new(bin_path)
             .arg("metadata")
             .arg(filename)
             .output()

@@ -64,7 +64,6 @@ export default function WriteModal({ mode, onSubmit, onClose }: WriteModalProps)
   }
 
   const title = mode === "overwrite" ? "Overwrite Bytes" : "Insert (Splice) Bytes";
-  const accent = mode === "overwrite" ? "blue" : "violet";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
