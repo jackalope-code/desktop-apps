@@ -1,21 +1,23 @@
-# CLI development
+
+## BinRW
+### CLI development
 * git clone https://github.com/jackalope-code/desktop-apps
 * cd binary-view-edit/binrw-cli
 * cargo install
 * cargo run
 
-# Build
+### Build
 * git clone https://github.com/jackalope-code/desktop-apps
 * cd binary-view-edit/binrw-cli
 * cargo build
 * Use build in target directory
 
-# Test
+### Test
 * cd into project directory
 * cd binary-view-edit/binrw-cli
 * cargo test
 
-# Bugs from tests
+### Bugs from tests
 
 
 # Active To-Do
