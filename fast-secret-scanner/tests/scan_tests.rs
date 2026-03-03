@@ -4,7 +4,7 @@
 //! default_rules, user_rule) against known-good and known-bad inputs.
 
 use fast_secret_scanner::{
-    default_rules, scan_directory, scan_file, user_rule,
+    apply_gitignore, default_rules, scan_directory, scan_file, user_rule,
     types::{Finding, ScanConfig, Severity},
 };
 use std::path::PathBuf;
@@ -17,6 +17,7 @@ fn default_cfg() -> ScanConfig {
         rules: default_rules(),
         ignore: vec![],
         scan_history: false,
+        redact: true,
     }
 }
 
@@ -364,6 +365,7 @@ fn scan_directory_respects_ignore_list() {
         rules: default_rules(),
         ignore: vec![PathBuf::from("vendor")],
         scan_history: false,
+        redact: true,
     };
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
@@ -410,6 +412,7 @@ fn custom_user_rule_matches() {
         rules: vec![custom],
         ignore: vec![],
         scan_history: false,
+        redact: true,
     };
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
@@ -436,32 +439,227 @@ fn severity_ordering_is_correct() {
 // ── Redaction ─────────────────────────────────────────────────────────────────
 
 #[test]
-fn high_severity_findings_are_redacted() {
+fn all_findings_redacted_by_default() {
     let dir = TempDir::new().unwrap();
     let full_key = "AKIAIOSFODNN7EXAMPLE";
     let path = write_file(&dir, "config.env", &format!("AWS_ACCESS_KEY={full_key}\n"));
-    let cfg = default_cfg();
+    let cfg = default_cfg(); // redact: true
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    let aws_findings: Vec<_> = findings.iter().filter(|f| f.severity >= Severity::High).collect();
-    for f in aws_findings {
+    for f in &findings {
         assert!(
-            f.matched_text.contains("[redacted]") || f.matched_text.len() < full_key.len(),
-            "high/critical matched_text should be redacted, got: '{}'", f.matched_text
+            f.matched_text.contains("[redacted]"),
+            "matched_text should be redacted for rule '{}', got: '{}'",
+            f.rule_name, f.matched_text
+        );
+        assert!(
+            !f.line_content.contains(full_key),
+            "line_content should not contain the raw secret, got: '{}'",
+            f.line_content
         );
     }
 }
 
 #[test]
-fn warning_severity_findings_are_not_redacted() {
+fn warning_findings_also_redacted_by_default() {
     let dir = TempDir::new().unwrap();
     let path = write_file(&dir, ".env", "MY_VAR=hello\n");
-    let cfg = default_cfg();
+    let cfg = default_cfg(); // redact: true
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
     let warn_findings = findings_for(&findings, "env-var-any");
-    // Warning-level matches are not redacted — full match is present
-    for f in warn_findings {
-        assert!(!f.matched_text.contains("[redacted]"), "warning findings should not be redacted");
+    assert!(!warn_findings.is_empty(), "should find env-var-any");
+    for f in &warn_findings {
+        assert!(
+            f.matched_text.contains("[redacted]"),
+            "warning findings should also be redacted by default, got: '{}'", f.matched_text
+        );
+    }
+}
+
+#[test]
+fn unredact_shows_full_values() {
+    let dir = TempDir::new().unwrap();
+    let full_key = "AKIAIOSFODNN7EXAMPLE";
+    let path = write_file(&dir, "config.env", &format!("AWS_ACCESS_KEY={full_key}\n"));
+    let cfg = ScanConfig {
+        rules: default_rules(),
+        ignore: vec![],
+        scan_history: false,
+        redact: false, // --unredact
+    };
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    let aws: Vec<_> = findings.iter().filter(|f| f.rule_name == "aws-access-key-id").collect();
+    assert!(!aws.is_empty(), "should find aws-access-key-id");
+    for f in &aws {
+        assert!(
+            f.matched_text.contains(full_key) || f.line_content.contains(full_key),
+            "with redact=false, full value must be visible"
+        );
+    }
+}
+
+// ── .gitignore coverage ───────────────────────────────────────────────────────
+
+/// Create a minimal git repo in `dir` with a `.gitignore` containing `entries`.
+fn init_git_repo_with_gitignore(dir: &TempDir, entries: &str) {
+    git2::Repository::init(dir.path()).expect("git init failed");
+    std::fs::write(dir.path().join(".gitignore"), entries).unwrap();
+}
+
+#[test]
+fn gitignored_file_findings_are_marked_covered() {
+    let dir = TempDir::new().unwrap();
+    init_git_repo_with_gitignore(&dir, ".env\n");
+
+    // .env is gitignored → finding should be covered
+    std::fs::write(
+        dir.path().join(".env"),
+        "DB_PASSWORD=super_secret_value\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let sensitive: Vec<_> = findings.iter().filter(|f| f.rule_name == "env-var-sensitive").collect();
+    assert!(!sensitive.is_empty(), "should find env-var-sensitive");
+    for f in &sensitive {
+        assert!(f.git_ignored, "finding in gitignored .env should have git_ignored=true");
+    }
+}
+
+#[test]
+fn non_gitignored_file_findings_are_marked_active() {
+    let dir = TempDir::new().unwrap();
+    init_git_repo_with_gitignore(&dir, "vendor/\n");
+
+    // config.py is NOT gitignored → finding should remain active
+    std::fs::write(
+        dir.path().join("config.py"),
+        "API_KEY = 'AIzaSyD-9tSrke72I6sSSBJkLBMnMioAqsL3IYA'\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let google: Vec<_> = findings.iter().filter(|f| f.rule_name == "google-api-key").collect();
+    assert!(!google.is_empty(), "should find google-api-key");
+    for f in &google {
+        assert!(!f.git_ignored, "finding in non-gitignored file should have git_ignored=false");
+    }
+}
+
+#[test]
+fn mixed_findings_partition_correctly() {
+    let dir = TempDir::new().unwrap();
+    // .env is ignored, config.js is not
+    init_git_repo_with_gitignore(&dir, ".env\n");
+
+    std::fs::write(
+        dir.path().join(".env"),
+        "DB_PASSWORD=ignored_secret_value\n",
+    ).unwrap();
+    std::fs::write(
+        dir.path().join("config.js"),
+        "const key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12';\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let (covered, active): (Vec<_>, Vec<_>) = findings.iter().partition(|f| f.git_ignored);
+    assert!(!covered.is_empty(), "should have covered findings from .env");
+    assert!(!active.is_empty(), "should have active findings from config.js");
+
+    // Stripe live key in config.js must be active (not gitignored)
+    let stripe_active = active.iter().any(|f| f.rule_name == "stripe-live-secret");
+    assert!(stripe_active, "stripe-live-secret in config.js must be active");
+
+    // env-var-sensitive from .env must be covered
+    let env_covered = covered.iter().any(|f| f.rule_name == "env-var-sensitive");
+    assert!(env_covered, "env-var-sensitive from gitignored .env must be covered");
+}
+
+#[test]
+fn all_covered_means_zero_active() {
+    let dir = TempDir::new().unwrap();
+    // Ignore everything that will contain secrets
+    init_git_repo_with_gitignore(&dir, ".env\nsecrets/\n");
+
+    std::fs::create_dir(dir.path().join("secrets")).unwrap();
+    std::fs::write(
+        dir.path().join(".env"),
+        "API_SECRET=some_long_secret_value\n",
+    ).unwrap();
+    std::fs::write(
+        dir.path().join("secrets").join("keys.txt"),
+        "GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let active: Vec<_> = findings.iter().filter(|f| !f.git_ignored).collect();
+    // Only the .gitignore file itself might appear in scans; no secret files are tracked
+    // All finding files (.env, secrets/) are gitignored → active should be empty
+    assert!(
+        active.iter().all(|f| !matches!(&f.location,
+            fast_secret_scanner::Location::File { path, .. }
+            if path.contains(".env") || path.contains("keys.txt")
+        )),
+        "secrets in gitignored files should not appear as active findings"
+    );
+}
+
+#[test]
+fn wildcard_gitignore_pattern_covers_env_files() {
+    let dir = TempDir::new().unwrap();
+    // Wildcard: ignore all .env.* variants
+    init_git_repo_with_gitignore(&dir, "*.env\n.env*\n");
+
+    std::fs::write(
+        dir.path().join(".env.production"),
+        "API_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let github_findings: Vec<_> = findings.iter().filter(|f| f.rule_name == "github-pat").collect();
+    assert!(!github_findings.is_empty(), "should find github-pat in .env.production");
+    for f in &github_findings {
+        assert!(f.git_ignored, ".env.production matched by .env* should be git_ignored");
+    }
+}
+
+#[test]
+fn non_git_directory_all_findings_are_active() {
+    let dir = TempDir::new().unwrap();
+    // No git repo → apply_gitignore is a no-op, all findings stay active
+    std::fs::write(
+        dir.path().join("secret.js"),
+        "const key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12';\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings); // no-op: no git repo
+
+    let stripe: Vec<_> = findings.iter().filter(|f| f.rule_name == "stripe-live-secret").collect();
+    assert!(!stripe.is_empty(), "should find stripe-live-secret");
+    for f in &stripe {
+        assert!(!f.git_ignored, "without a git repo, findings should not be marked git_ignored");
     }
 }

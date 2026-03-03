@@ -55,6 +55,11 @@ pub struct Finding {
     pub matched_text: String,
     /// Full source line.
     pub line_content: String,
+    /// True when the file containing this secret is covered by the repo's
+    /// .gitignore rules (so the secret cannot be accidentally pushed).
+    /// Always false for commit-history findings.
+    #[serde(default)]
+    pub git_ignored: bool,
 }
 
 // ── ScanConfig ────────────────────────────────────────────────────────────────
@@ -67,6 +72,9 @@ pub struct ScanConfig {
     pub ignore: Vec<PathBuf>,
     /// Whether to scan git commit history in addition to working tree.
     pub scan_history: bool,
+    /// Redact matched values in output (default: true). Pass false only when
+    /// `--unredact` is explicitly requested by the user.
+    pub redact: bool,
 }
 
 impl ScanConfig {

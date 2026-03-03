@@ -1,8 +1,54 @@
 use crate::types::{Finding, Location, ScanConfig};
 use crate::patterns::Rule;
 use anyhow::Context;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+// ── .gitignore coverage check ─────────────────────────────────────────────────────
+
+/// Returns true if `abs_path` is covered by the repo's .gitignore rules.
+/// Respects all gitignore layers (.gitignore, .git/info/exclude, global).
+/// Always returns false for bare repos or paths outside the working tree.
+pub fn is_git_ignored(repo: &git2::Repository, repo_path: &Path, abs_path: &str) -> bool {
+    let workdir = match repo.workdir() {
+        Some(w) => w,
+        None => return false,
+    };
+
+    let abs = Path::new(abs_path);
+
+    // Try to get a relative path. Try repo_path first (already canonicalized),
+    // then workdir, then canonicalize both to handle Windows UNC prefixes.
+    let rel: PathBuf = if let Ok(r) = abs.strip_prefix(repo_path) {
+        r.to_path_buf()
+    } else if let Ok(r) = abs.strip_prefix(workdir) {
+        r.to_path_buf()
+    } else {
+        let canon_root = repo_path.canonicalize()
+            .unwrap_or_else(|_| repo_path.to_path_buf());
+        let canon_abs = abs.canonicalize()
+            .unwrap_or_else(|_| abs.to_path_buf());
+        match canon_abs.strip_prefix(&canon_root) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => return false,
+        }
+    };
+
+    repo.is_path_ignored(&rel).unwrap_or(false)
+}
+
+/// Apply .gitignore coverage to a set of findings.
+/// File findings whose path is git-ignored get `git_ignored = true`.
+/// Commit-history findings are never marked as covered (already in history).
+pub fn apply_gitignore(repo_path: &Path, findings: &mut Vec<Finding>) {
+    if let Ok(repo) = git2::Repository::open(repo_path) {
+        for f in findings.iter_mut() {
+            if let Location::File { path, .. } = &f.location {
+                f.git_ignored = is_git_ignored(&repo, repo_path, path);
+            }
+        }
+    }
+}
 
 // ── is-env-file helper ───────────────────────────────────────────────────────
 
@@ -26,6 +72,7 @@ fn scan_line(
     line_no: usize,
     rules: &[Rule],
     env_file: bool,
+    redact: bool,
     location_fn: impl Fn(usize) -> Location,
     findings: &mut Vec<Finding>,
 ) {
@@ -34,25 +81,30 @@ fn scan_line(
             continue;
         }
         if let Some(mat) = rule.regex.find(line) {
-            // Redact the matched portion for High/Critical to avoid leaking
-            // secrets in the output.
-            let matched = match rule.severity {
-                crate::types::Severity::Critical | crate::types::Severity::High => {
-                    let raw = mat.as_str();
-                    if raw.len() > 8 {
-                        format!("{}…[redacted]", &raw[..4])
-                    } else {
-                        "[redacted]".into()
-                    }
-                }
-                _ => mat.as_str().to_string(),
+            let raw = mat.as_str();
+            let (matched_text, line_content) = if redact {
+                let token = if raw.len() > 8 {
+                    format!("{}…[redacted]", &raw[..4])
+                } else {
+                    "[redacted]".into()
+                };
+                let redacted_line = format!(
+                    "{}{}{}",
+                    &line[..mat.start()],
+                    "[redacted]",
+                    &line[mat.end()..],
+                );
+                (token, redacted_line.trim_end().to_string())
+            } else {
+                (raw.to_string(), line.trim_end().to_string())
             };
             findings.push(Finding {
                 rule_name: rule.name.clone(),
                 severity: rule.severity.clone(),
                 location: location_fn(line_no),
-                matched_text: matched,
-                line_content: line.trim_end().to_string(),
+                matched_text,
+                line_content,
+                git_ignored: false,
             });
         }
     }
@@ -81,7 +133,7 @@ pub fn scan_file(path: &Path, cfg: &ScanConfig, findings: &mut Vec<Finding>) -> 
             path: path_str.clone(),
             line_no: ln,
         };
-        scan_line(line, line_no, &cfg.rules, env_file, loc, findings);
+        scan_line(line, line_no, &cfg.rules, env_file, cfg.redact, loc, findings);
     }
     Ok(())
 }
@@ -223,6 +275,7 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
                 0, // line numbers not available in diff context
                 rules,
                 env_file,
+                cfg.redact,
                 move |_| Location::Commit {
                     hash: hash.clone(),
                     short_hash: sh.clone(),

@@ -2,7 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 use fast_secret_scanner::{
     patterns::{default_rules, user_rule},
-    scanner::{scan_directory, scan_git_history},
+    scanner::{apply_gitignore, scan_directory, scan_git_history},
     types::{Finding, Location, ScanConfig, Severity},
 };
 use std::path::PathBuf;
@@ -49,6 +49,10 @@ struct Cli {
     #[arg(long, value_name = "LEVEL", default_value = "warning")]
     min_severity: String,
 
+    /// Show the full matched secret value in output instead of redacting it.
+    #[arg(long)]
+    unredact: bool,
+
     /// GitHub token for cloning private repositories (GITHUB_TOKEN env var also works).
     #[arg(long, value_name = "TOKEN", env = "GITHUB_TOKEN")]
     token: Option<String>,
@@ -78,6 +82,7 @@ fn main() -> anyhow::Result<()> {
         rules,
         ignore,
         scan_history: !cli.no_history,
+        redact: !cli.unredact,
     };
 
     // ── Resolve repo path ──────────────────────────────────────────────────
@@ -124,30 +129,69 @@ fn main() -> anyhow::Result<()> {
             && loc_key(&a.location) == loc_key(&b.location)
     });
 
+    // ── Check .gitignore coverage (file findings only) ─────────────────────
+    // Commit-history findings are *never* considered covered — the secret is
+    // already baked into the git object store and .gitignore cannot protect it.
+    apply_gitignore(&repo_path, &mut findings);
+
+    // Partition: actively-exposed secrets vs. safely .gitignore'd
+    let (covered, active): (Vec<Finding>, Vec<Finding>) =
+        findings.into_iter().partition(|f| f.git_ignored);
+
     // ── Output ─────────────────────────────────────────────────────────────
     if cli.json {
-        println!("{}", serde_json::to_string_pretty(&findings)?);
+        #[derive(serde::Serialize)]
+        struct JsonOutput {
+            active_findings: Vec<Finding>,
+            covered_by_gitignore: Vec<Finding>,
+        }
+        println!("{}", serde_json::to_string_pretty(&JsonOutput {
+            active_findings: active.clone(),
+            covered_by_gitignore: covered.clone(),
+        })?);
     } else {
-        print_findings(&findings);
+        if !covered.is_empty() {
+            print_covered_findings(&covered);
+        }
+        if !active.is_empty() {
+            print_findings(&active);
+        }
     }
 
-    // Exit code: 0 = no findings, 1 = findings found
-    if findings.is_empty() {
+    // Exit 0 when there are no uncovered secrets (covered-only = success).
+    if active.is_empty() {
         if !cli.json {
-            println!("{}", "No secrets found.".green().bold());
+            if covered.is_empty() {
+                println!("{}", "No secrets found.".green().bold());
+            } else {
+                println!(
+                    "\n{} {} secret(s) found but all covered by .gitignore – safe to commit.",
+                    "✓".green().bold(),
+                    covered.len()
+                );
+            }
         }
         Ok(())
     } else {
         if !cli.json {
+            let covered_note = if covered.is_empty() {
+                String::new()
+            } else {
+                format!("  ({} additional finding(s) covered by .gitignore)", covered.len())
+            };
             println!(
-                "\n{} {} finding(s) total.",
+                "\n{} {} active finding(s) require attention.{}",
                 "⚠".yellow().bold(),
-                findings.len()
+                active.len(),
+                covered_note.dimmed(),
             );
         }
         std::process::exit(1);
     }
 }
+
+// ── .gitignore coverage check ────────────────────────────────────────────────
+// (logic lives in fast_secret_scanner::scanner::apply_gitignore)
 
 // ── Clone helper ──────────────────────────────────────────────────────────────
 
@@ -213,6 +257,36 @@ fn severity_color(s: &Severity) -> colored::ColoredString {
         Severity::High     => format!("[{s}]").yellow().bold(),
         Severity::Medium   => format!("[{s}]").magenta(),
         Severity::Warning  => format!("[{s}]").cyan(),
+    }
+}
+
+/// Print findings that are covered by .gitignore — success, but informational.
+fn print_covered_findings(findings: &[Finding]) {
+    for f in findings {
+        let rule = f.rule_name.bold();
+        match &f.location {
+            Location::File { path, line_no } => {
+                println!(
+                    "{} {} {rule}  {}:{}",
+                    "✓".green().bold(),
+                    "[COVERED]".green().bold(),
+                    path.blue(),
+                    line_no.to_string().dimmed(),
+                );
+            }
+            Location::Commit { short_hash, file, .. } => {
+                println!(
+                    "{} {} {rule}  commit {} {}",
+                    "✓".green().bold(),
+                    "[COVERED]".green().bold(),
+                    short_hash.yellow(),
+                    file.blue(),
+                );
+            }
+        }
+        println!("      match:   {}", f.matched_text.yellow());
+        println!("      line:    {}", f.line_content.dimmed());
+        println!();
     }
 }
 
