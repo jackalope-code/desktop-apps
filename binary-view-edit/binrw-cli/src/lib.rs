@@ -94,3 +94,49 @@ fn parse_hex_data(data: Vec<u8>, precede_zero_x: bool) -> Vec<String> {
     }
     return output;
 }
+
+/// A string found during a scan.
+pub struct StringMatch {
+    pub offset: u64,
+    pub value: String,
+}
+
+/// Scan `filename` for runs of printable ASCII bytes (0x20–0x7E, plus tab/LF/CR).
+/// Returns all runs of at least `min_length` printable bytes.
+pub fn scan_strings(filename: &str, min_length: usize) -> Vec<StringMatch> {
+    let data = match std::fs::read(filename) {
+        Ok(d) => d,
+        Err(_) => return vec![],
+    };
+    let mut results = Vec::new();
+    let mut run_start: Option<usize> = None;
+    let mut run_len = 0usize;
+
+    for (i, &b) in data.iter().enumerate() {
+        let printable = (0x20..=0x7E).contains(&b) || b == 0x09 || b == 0x0A || b == 0x0D;
+        if printable {
+            if run_start.is_none() {
+                run_start = Some(i);
+                run_len = 0;
+            }
+            run_len += 1;
+        } else {
+            if let Some(start) = run_start {
+                if run_len >= min_length {
+                    let s = String::from_utf8_lossy(&data[start..start + run_len]).into_owned();
+                    results.push(StringMatch { offset: start as u64, value: s });
+                }
+            }
+            run_start = None;
+            run_len = 0;
+        }
+    }
+    // flush trailing run
+    if let Some(start) = run_start {
+        if run_len >= min_length {
+            let s = String::from_utf8_lossy(&data[start..start + run_len]).into_owned();
+            results.push(StringMatch { offset: start as u64, value: s });
+        }
+    }
+    results
+}

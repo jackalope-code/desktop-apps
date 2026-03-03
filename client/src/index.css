@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Custom dark theme base for the binary editor */
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 font-mono;
+  }
+}

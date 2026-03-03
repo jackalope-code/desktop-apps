@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod copy_tests {
-    use std::fs;
     use std::io::Write;
     use std::process::Command;
     use std::path::Path;
@@ -8,6 +7,7 @@ mod copy_tests {
     use binrw_cli::utils::tempfile::TempFile;
     use std::env;
     use std::path::PathBuf;
+    use std::io::Seek;
 
     fn file_hash<P: AsRef<std::path::Path>>(path: P) -> String {
         let data = std::fs::read(&path).expect(&format!("Could not read file: {:?}", path.as_ref()));
@@ -41,6 +41,7 @@ mod copy_tests {
     fn copy_file_and_compare_hash() {
         let mut src = TempFile::new("test_copy_src.bin", false).unwrap();
         src.as_file().unwrap().write_all(b"Some binary data\x00\x01\x02").unwrap();
+        src.as_file().unwrap().sync_all().unwrap();
         let src_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_copy_src.bin");
         let dest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_copy_dest.bin");
         run_copy_command(src_path.to_str().unwrap(), dest_path.to_str().unwrap());
@@ -56,6 +57,7 @@ mod copy_tests {
         let mut src = TempFile::new("test_copy_large_src.bin", false).unwrap();
         let data = vec![0u8; 1024 * 1024]; // 1MB of zeros
         src.as_file().unwrap().write_all(&data).unwrap();
+        src.as_file().unwrap().sync_all().unwrap();
         let src_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_copy_large_src.bin");
         let dest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_copy_large_dest.bin");
         run_copy_command(src_path.to_str().unwrap(), dest_path.to_str().unwrap());

@@ -135,8 +135,8 @@ mod write_overwrite_tests {
         file.as_file().unwrap().write_all(b"FOOBAR").unwrap();
         let path = file.path_str();
         // Write from a large positive offset to a negative offset (simulate valid left->right)
-        // For this test, write at offset 2 (valid, should overwrite from O)
-        run_write_command("overwrite", path, "2", "foo");
+        // For this test, write at offset 3 (valid, should overwrite from B)
+        run_write_command("overwrite", path, "3", "foo");
         let content = fs::read_to_string(path).unwrap();
         assert_eq!(content, "FOOfoo");
     }
@@ -146,10 +146,10 @@ mod write_overwrite_tests {
         let mut file = TempFile::new("test_write_negative_offset_to_large_positive_offsets.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"FOOBAR").unwrap();
         let path = file.path_str();
-        // Write from -4 (index 2) to 4 (index 4), valid left->right
-        run_write_command("overwrite", path, "-4", "foo");
+        // Write from -3 (index 3) to end, valid left->right
+        run_write_command("overwrite", path, "-3", "foo");
         let content = fs::read_to_string(path).unwrap();
-        // Should overwrite OBA with foo
+        // Should overwrite BAR with foo
         assert_eq!(content, "FOOfoo");
     }
 
@@ -210,11 +210,11 @@ mod write_overwrite_tests {
         let mut file = TempFile::new("test_write_negative_to_negative_descending_fail.txt", false).unwrap();
         file.as_file().unwrap().write_all(b"FOOBAR").unwrap();
         let path = file.path_str();
-        // Invalid: start > end (simulate by writing at -2, but not enough data to fill)
+        // Partial write: offset -2 (index 4), data "FOO" (3 bytes) but only 2 bytes fit before EOF
         run_write_command("overwrite", path, "-2", "FOO");
         let content = fs::read_to_string(path).unwrap();
-        // Should not change file
-        assert_eq!(content, "FOOBAR");
+        // Should partially overwrite: write first 2 bytes of "FOO" at index 4,5
+        assert_eq!(content, "FOOBFO");
     }
 
     #[test]
@@ -241,10 +241,22 @@ mod write_overwrite_tests {
 
     // Removed duplicate invalid_write_offset_fail
 
-    #[ignore]
     #[test]
     fn overwrite_file_with_file() {
-        // Placeholder: implement file-to-file overwrite logic here
+        // Create target file
+        let mut target = TempFile::new("test_overwrite_file_with_file.txt", false).unwrap();
+        target.as_file().unwrap().write_all(b"ABCDEFGHIJ").unwrap();
+        // Create source data file
+        let mut src = TempFile::new("test_overwrite_src_data.bin", false).unwrap();
+        src.as_file().unwrap().write_all(b"XYZ").unwrap();
+        // Overwrite at offset 3 with contents of source file
+        let _ = Command::new("target/debug/binrw-cli.exe")
+            .arg("write").arg("overwrite")
+            .arg(target.path_str()).arg("3").arg(src.path_str())
+            .arg("--file")
+            .output().expect("Failed to run binrw-cli write overwrite --file");
+        let content = fs::read_to_string(target.path_str()).unwrap();
+        assert_eq!(content, "ABCXYZGHIJ");
     }
 
     #[test]
@@ -258,16 +270,42 @@ mod write_overwrite_tests {
         assert_eq!(content, "FOOfoo");
     }
 
-    #[ignore]
     #[test]
     fn check_write_overwrite() {
-
+        // Write data, then read back and verify contents match
+        let mut file = TempFile::new("test_check_write_overwrite.txt", false).unwrap();
+        file.as_file().unwrap().write_all(b"ABCDEFGHIJ").unwrap();
+        let path = file.path_str();
+        run_write_command("overwrite", path, "3", "XYZ");
+        let content = fs::read_to_string(path).unwrap();
+        assert_eq!(content, "ABCXYZGHIJ");
+        // Overwrite at start
+        run_write_command("overwrite", path, "0", "00");
+        let content = fs::read_to_string(path).unwrap();
+        assert_eq!(content, "00CXYZGHIJ");
+        // Overwrite at end
+        run_write_command("overwrite", path, "8", "!!");
+        let content = fs::read_to_string(path).unwrap();
+        assert_eq!(content, "00CXYZGH!!");
     }
     
-    #[ignore]
     #[test]
     fn check_write_overwrite_from_file() {
-
+        // Create target file
+        let mut target = TempFile::new("test_check_overwrite_from_file.txt", false).unwrap();
+        target.as_file().unwrap().write_all(b"HELLO_WORLD").unwrap();
+        // Create source data file with "RUST"
+        let mut src = TempFile::new("test_overwrite_from_file_src.bin", false).unwrap();
+        src.as_file().unwrap().write_all(b"RUST").unwrap();
+        // Overwrite at offset 6 with file contents
+        let _ = Command::new("target/debug/binrw-cli.exe")
+            .arg("write").arg("overwrite")
+            .arg(target.path_str()).arg("6").arg(src.path_str())
+            .arg("--file")
+            .output().expect("Failed to run binrw-cli write overwrite --file");
+        let content = fs::read_to_string(target.path_str()).unwrap();
+        // "HELLO_WORLD" overwrite at 6 with "RUST" (4 bytes, room for 5) → "HELLO_RUSTD"
+        assert_eq!(content, "HELLO_RUSTD");
     }
     #[ignore]
     #[test]
