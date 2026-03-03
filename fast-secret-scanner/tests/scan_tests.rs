@@ -18,6 +18,7 @@ fn default_cfg() -> ScanConfig {
         ignore: vec![],
         scan_history: false,
         redact: true,
+        fssignore: vec![],
     }
 }
 
@@ -39,6 +40,23 @@ fn has_rule(findings: &[Finding], name: &str) -> bool {
 
 fn findings_for<'a>(findings: &'a [Finding], name: &str) -> Vec<&'a Finding> {
     findings.iter().filter(|f| f.rule_name == name).collect()
+}
+
+fn location_path(f: &Finding) -> Option<&str> {
+    match &f.location {
+        fast_secret_scanner::Location::File { path, .. } => Some(path.as_str()),
+        _ => None,
+    }
+}
+
+// Helper trait so tests can call f.location_path() ergonomically
+trait FindingExt {
+    fn location_path(&self) -> Option<&str>;
+}
+impl FindingExt for Finding {
+    fn location_path(&self) -> Option<&str> {
+        location_path(self)
+    }
 }
 
 // ── Private / PEM keys ────────────────────────────────────────────────────────
@@ -366,6 +384,7 @@ fn scan_directory_respects_ignore_list() {
         ignore: vec![PathBuf::from("vendor")],
         scan_history: false,
         redact: true,
+        fssignore: vec![],
     };
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
@@ -413,6 +432,7 @@ fn custom_user_rule_matches() {
         ignore: vec![],
         scan_history: false,
         redact: true,
+        fssignore: vec![],
     };
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
@@ -487,6 +507,7 @@ fn unredact_shows_full_values() {
         ignore: vec![],
         scan_history: false,
         redact: false, // --unredact
+        fssignore: vec![],
     };
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
@@ -661,5 +682,191 @@ fn non_git_directory_all_findings_are_active() {
     assert!(!stripe.is_empty(), "should find stripe-live-secret");
     for f in &stripe {
         assert!(!f.git_ignored, "without a git repo, findings should not be marked git_ignored");
+    }
+}
+
+// ── Monorepo / nested .gitignore tests ───────────────────────────────────────
+//
+// git2::Repository::is_path_ignored walks the full gitignore chain
+// (root .gitignore → subdir .gitignore → .git/info/exclude → global),
+// so all nested rules should be respected automatically.
+
+/// Create a git repo with ONLY a root .gitignore (no subdir rules yet).
+/// Subdirectory .gitignore files are created by the individual tests.
+fn init_monorepo(dir: &TempDir, root_gitignore: &str) {
+    git2::Repository::init(dir.path()).expect("git init failed");
+    if !root_gitignore.is_empty() {
+        std::fs::write(dir.path().join(".gitignore"), root_gitignore).unwrap();
+    }
+}
+
+#[test]
+fn subdir_gitignore_covers_files_in_that_subdir() {
+    // packages/api has its own .gitignore covering .env
+    // packages/web has NO .gitignore – its .env is exposed
+    let dir = TempDir::new().unwrap();
+    init_monorepo(&dir, ""); // empty root gitignore
+
+    let api = dir.path().join("packages").join("api");
+    let web = dir.path().join("packages").join("web");
+    std::fs::create_dir_all(&api).unwrap();
+    std::fs::create_dir_all(&web).unwrap();
+
+    std::fs::write(api.join(".gitignore"), ".env\n").unwrap();
+    std::fs::write(api.join(".env"), "DB_PASSWORD=covered_secret\n").unwrap();
+    std::fs::write(web.join(".env"), "DB_PASSWORD=exposed_secret\n").unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let api_findings: Vec<_> = findings.iter()
+        .filter(|f| f.location_path().map_or(false, |p| p.contains("api")))
+        .collect();
+    let web_findings: Vec<_> = findings.iter()
+        .filter(|f| f.location_path().map_or(false, |p| p.contains("web")))
+        .collect();
+
+    assert!(!api_findings.is_empty(), "should find secrets in packages/api");
+    for f in &api_findings {
+        assert!(f.git_ignored, "packages/api/.env covered by subdir .gitignore → git_ignored");
+    }
+    assert!(!web_findings.is_empty(), "should find secrets in packages/web");
+    for f in &web_findings {
+        assert!(!f.git_ignored, "packages/web/.env has no coverage → active");
+    }
+}
+
+#[test]
+fn root_gitignore_covers_files_in_nested_subdirs() {
+    // Root .gitignore with "**/.env" covers .env files at any depth
+    let dir = TempDir::new().unwrap();
+    init_monorepo(&dir, "**/.env\n");
+
+    let deep = dir.path().join("packages").join("backend").join("config");
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join(".env"), "API_SECRET=deeply_nested_secret\n").unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let env_findings: Vec<_> = findings.iter()
+        .filter(|f| f.rule_name == "env-var-sensitive")
+        .collect();
+    assert!(!env_findings.is_empty(), "should find env-var-sensitive in nested .env");
+    for f in &env_findings {
+        assert!(f.git_ignored, "deeply nested .env covered by root **/.env rule");
+    }
+}
+
+#[test]
+fn root_and_subdir_gitignores_both_apply() {
+    // Root ignores *.key files globally; packages/payments also ignores .env
+    // Both packages/payments/.env AND any *.key files anywhere are covered
+    let dir = TempDir::new().unwrap();
+    init_monorepo(&dir, "*.key\n");
+
+    let payments = dir.path().join("packages").join("payments");
+    std::fs::create_dir_all(&payments).unwrap();
+    std::fs::write(payments.join(".gitignore"), ".env\n").unwrap();
+    std::fs::write(payments.join(".env"), "STRIPE_SECRET=sk_live_51ABCDEFGHIJKLMNorstuvwxyz12\n").unwrap();
+    std::fs::write(payments.join("signing.key"), "private-key = AKIAIOSFODNN7EXAMPLE\n").unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    // .env covered by packages/payments/.gitignore
+    let env_covered = findings.iter()
+        .filter(|f| f.rule_name == "stripe-live-secret" && f.git_ignored)
+        .count();
+    assert!(env_covered > 0, "stripe secret in .env should be covered by subdir .gitignore");
+
+    // .key file covered by root .gitignore
+    let key_covered = findings.iter()
+        .filter(|f| f.location_path().map_or(false, |p| p.ends_with("signing.key")) && f.git_ignored)
+        .count();
+    assert!(key_covered > 0, "signing.key should be covered by root *.key rule");
+}
+
+#[test]
+fn subdir_gitignore_negation_uncovers_root_rule() {
+    // Root ignores all .env files. packages/public/.gitignore tries to
+    // re-include with "!.env". In native `git`, a subdir negation CAN override
+    // a parent file-level rule (as opposed to a parent *directory* exclusion).
+    //
+    // However, libgit2's `is_path_ignored` does NOT honour subdir negation
+    // overrides of root-level patterns — it still reports the file as ignored.
+    // This is a known libgit2 limitation. We document and assert the actual
+    // behavior here so that we catch any future library upgrade that fixes it.
+    let dir = TempDir::new().unwrap();
+    init_monorepo(&dir, ".env\n");
+
+    let public_pkg = dir.path().join("packages").join("public");
+    std::fs::create_dir_all(&public_pkg).unwrap();
+    std::fs::write(public_pkg.join(".gitignore"), "!.env\n").unwrap();
+    std::fs::write(public_pkg.join(".env"), "NODE_ENV=production\nPORT=8080\n").unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let public_findings: Vec<_> = findings.iter()
+        .filter(|f| f.location_path().map_or(false, |p| p.contains("public")))
+        .collect();
+
+    assert!(!public_findings.is_empty(), "should find env vars in packages/public/.env");
+    // libgit2 limitation: the root ".env" rule wins; subdir "!.env" negation is
+    // not applied. All findings remain marked as git_ignored = true.
+    // If this assertion ever fails it means libgit2 was fixed and we can
+    // flip to asserting git_ignored = false.
+    for f in &public_findings {
+        assert!(f.git_ignored,
+            "libgit2 does not honour subdir negation of root rules — expected git_ignored=true (known limitation)");
+    }
+}
+
+#[test]
+fn each_package_gitignore_is_scoped_to_its_subtree() {
+    // Three packages: only packages/a ignores .env
+    // packages/b and packages/c don't → their findings stay active
+    let dir = TempDir::new().unwrap();
+    init_monorepo(&dir, "");
+
+    for pkg in ["a", "b", "c"] {
+        let p = dir.path().join("packages").join(pkg);
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join(".env"), format!("TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV{pkg}0123456\n")).unwrap();
+    }
+    // Only package a ignores it
+    std::fs::write(
+        dir.path().join("packages").join("a").join(".gitignore"),
+        ".env\n",
+    ).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_directory(dir.path(), &cfg, &mut findings).unwrap();
+    apply_gitignore(dir.path(), &mut findings);
+
+    let pat_findings: Vec<_> = findings.iter()
+        .filter(|f| f.rule_name == "github-pat")
+        .collect();
+    assert!(!pat_findings.is_empty(), "should find github-pat in all packages");
+
+    for f in &pat_findings {
+        let path = f.location_path().unwrap_or("");
+        let in_a = path.contains(&format!("packages{}a", std::path::MAIN_SEPARATOR))
+            || path.contains("packages/a");
+        if in_a {
+            assert!(f.git_ignored, "packages/a/.env should be covered");
+        } else {
+            assert!(!f.git_ignored, "packages/b and packages/c .env should be active");
+        }
     }
 }

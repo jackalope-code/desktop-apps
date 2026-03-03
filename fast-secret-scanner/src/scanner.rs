@@ -4,6 +4,44 @@ use anyhow::Context;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+// ── .fssignore support ────────────────────────────────────────────────────────
+
+/// Load `.fssignore` patterns from `root/.fssignore`.
+/// Comment lines (starting with `#`) and blank lines are skipped.
+pub fn load_fssignore(root: &Path) -> Vec<String> {
+    let p = root.join(".fssignore");
+    match std::fs::read_to_string(&p) {
+        Ok(content) => content
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| l.to_string())
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+/// Return true if `rel_path` (using `/` separators, relative to repo root)
+/// is matched by any `.fssignore` pattern.
+/// - Patterns ending with `/` are treated as directory prefixes.
+/// - Other patterns match if `rel_path == pattern` or
+///   `rel_path` ends with `/<pattern>` (suffix match).
+fn matches_fssignore(rel_path: &str, patterns: &[String]) -> bool {
+    let norm = rel_path.replace('\\', "/");
+    for pat in patterns {
+        let t = pat.trim();
+        if t.ends_with('/') {
+            let prefix = t.trim_end_matches('/');
+            if norm.starts_with(&format!("{}/", prefix)) {
+                return true;
+            }
+        } else if norm == t || norm.ends_with(&format!("/{}", t)) {
+            return true;
+        }
+    }
+    false
+}
+
 // ── .gitignore coverage check ─────────────────────────────────────────────────────
 
 /// Returns true if `abs_path` is covered by the repo's .gitignore rules.
@@ -168,7 +206,18 @@ pub fn scan_directory(root: &Path, cfg: &ScanConfig, findings: &mut Vec<Finding>
             if p.file_name().map_or(false, |n| n == ".git") {
                 return false;
             }
-            !cfg.is_ignored(p)
+            if cfg.is_ignored(p) {
+                return false;
+            }
+            if !cfg.fssignore.is_empty() {
+                let rel = p.strip_prefix(root).unwrap_or(p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if matches_fssignore(&rel, &cfg.fssignore) {
+                    return false;
+                }
+            }
+            true
         })
     {
         let entry = match entry {
@@ -185,18 +234,28 @@ pub fn scan_directory(root: &Path, cfg: &ScanConfig, findings: &mut Vec<Finding>
 // ── Git history scanner ───────────────────────────────────────────────────────
 
 pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<Finding>) -> anyhow::Result<()> {
-    use git2::{DiffFormat, Repository, Sort};
+    use git2::{DiffFormat, DiffOptions, Repository, Sort};
+    use std::collections::HashSet;
 
     let repo = Repository::open(repo_path)
         .with_context(|| format!("failed to open git repo at {}", repo_path.display()))?;
 
     let mut revwalk = repo.revwalk()?;
-    revwalk.set_sorting(Sort::TIME)?;
+    revwalk.set_sorting(Sort::TIME | Sort::TOPOLOGICAL)?;
 
     // Push all local references so we scan every branch.
     revwalk.push_glob("refs/heads/*")?;
     // Fall back to HEAD if no branches found.
     let _ = revwalk.push_head();
+
+    // Track (rule_name, file, matched_text) triples already emitted so that
+    // the same secret committed on multiple branches / repeated in history
+    // only appears once in the output.
+    let seen_on_disk: &mut HashSet<String> = &mut HashSet::new();
+
+    // Diff options: skip binary content, limit context to 0 lines.
+    let mut diff_opts = DiffOptions::new();
+    diff_opts.context_lines(0).ignore_whitespace(false);
 
     for oid_result in revwalk {
         let oid = match oid_result {
@@ -207,6 +266,13 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
             Ok(c) => c,
             Err(_) => continue,
         };
+
+        // Skip merge commits — their added lines already appear in the branch
+        // commits being merged in, so we would double-count them.
+        if commit.parent_count() > 1 {
+            continue;
+        }
+
         let tree = match commit.tree() {
             Ok(t) => t,
             Err(_) => continue,
@@ -214,11 +280,11 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
 
         let diff = if commit.parent_count() == 0 {
             // Initial commit – diff against empty tree.
-            repo.diff_tree_to_tree(None, Some(&tree), None)
+            repo.diff_tree_to_tree(None, Some(&tree), Some(&mut diff_opts))
         } else {
             let parent = commit.parent(0)?;
             let parent_tree = parent.tree()?;
-            repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
+            repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), Some(&mut diff_opts))
         };
 
         let diff = match diff {
@@ -226,12 +292,13 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
             Err(_) => continue,
         };
 
-        let short_hash = &oid.to_string()[..8];
+        // Hoist per-commit strings outside the diff callback to avoid
+        // re-allocating on every matched line.
+        let hash_str = oid.to_string();
+        let short_hash = hash_str[..8].to_string();
         let commit_msg = commit.summary().unwrap_or("").to_string();
 
-        // We collect findings in a local vec to pass to the closure.
         let mut local: Vec<Finding> = Vec::new();
-
         let rules = &cfg.rules;
         let ignored = &cfg.ignore;
 
@@ -244,14 +311,14 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
                 Ok(s) => s,
                 Err(_) => return true,
             };
-            // Resolve the file path from the diff delta.
+
             let file_path = delta
                 .new_file()
                 .path()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Check ignore list.
+            // Skip ignored paths.
             let path_obj = std::path::PathBuf::from(&file_path);
             for ign in ignored {
                 if path_obj.starts_with(ign) {
@@ -264,15 +331,20 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
                 }
             }
 
+            // Skip .fssignore paths (history diff paths are already relative).
+            if matches_fssignore(&file_path, &cfg.fssignore) {
+                return true;
+            }
+
             let env_file = is_env_file(Path::new(&file_path));
-            let hash = oid.to_string();
-            let sh = short_hash.to_string();
+            let hash = hash_str.clone();
+            let sh = short_hash.clone();
             let msg = commit_msg.clone();
             let fp = file_path.clone();
 
             scan_line(
                 content.trim_end_matches('\n'),
-                0, // line numbers not available in diff context
+                0,
                 rules,
                 env_file,
                 cfg.redact,
@@ -287,9 +359,18 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
 
             true
         })
-        .ok(); // ignore diff errors
+        .ok();
 
-        findings.extend(local);
+        // Dedup within history: only keep the first occurrence of each
+        // (rule, file, matched_text) triple across all commits.
+        for f in local {
+            if let Location::Commit { ref file, .. } = f.location {
+                let key = format!("{}|{}|{}", f.rule_name, file, f.matched_text);
+                if seen_on_disk.insert(key) {
+                    findings.push(f);
+                }
+            }
+        }
     }
 
     Ok(())

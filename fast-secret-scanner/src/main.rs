@@ -2,7 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 use fast_secret_scanner::{
     patterns::{default_rules, user_rule},
-    scanner::{apply_gitignore, scan_directory, scan_git_history},
+    scanner::{apply_gitignore, load_fssignore, scan_directory, scan_git_history},
     types::{Finding, Location, ScanConfig, Severity},
 };
 use std::path::PathBuf;
@@ -29,7 +29,7 @@ struct Cli {
     #[arg(long)]
     no_history: bool,
 
-    /// Do not warn about hardcoded user home-directory paths (e.g. /home/user/… or C:\Users\user\…).
+    /// Do not warn about hardcoded home-directory paths found in source files.
     #[arg(long)]
     keep_user_dir: bool,
 
@@ -78,13 +78,6 @@ fn main() -> anyhow::Result<()> {
 
     let min_sev = parse_severity(&cli.min_severity)?;
 
-    let cfg = ScanConfig {
-        rules,
-        ignore,
-        scan_history: !cli.no_history,
-        redact: !cli.unredact,
-    };
-
     // ── Resolve repo path ──────────────────────────────────────────────────
     let (repo_path, _temp_dir) = if let Some(ref slug) = cli.gh_repo {
         let td = clone_github_repo(slug, cli.token.as_deref())?;
@@ -102,6 +95,14 @@ fn main() -> anyhow::Result<()> {
     if !cli.json {
         eprintln!("{} {}", "Scanning".cyan().bold(), repo_path.display());
     }
+
+    let cfg = ScanConfig {
+        rules,
+        ignore,
+        scan_history: !cli.no_history,
+        redact: !cli.unredact,
+        fssignore: load_fssignore(&repo_path),
+    };
 
     let mut findings: Vec<Finding> = Vec::new();
 

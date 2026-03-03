@@ -75,6 +75,10 @@ pub struct ScanConfig {
     /// Redact matched values in output (default: true). Pass false only when
     /// `--unredact` is explicitly requested by the user.
     pub redact: bool,
+    /// Patterns from `.fssignore` – relative path prefixes to skip entirely.
+    /// Lines starting with `#` and blank lines are ignored.  Trailing `/`
+    /// denotes a directory prefix; otherwise an exact relative-path suffix match.
+    pub fssignore: Vec<String>,
 }
 
 impl ScanConfig {
