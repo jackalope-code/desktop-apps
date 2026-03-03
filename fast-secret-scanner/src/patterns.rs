@@ -131,9 +131,11 @@ pub fn default_rules() -> Vec<Rule> {
             r#"(?i)mailgun[_\-\. ]?(?:api[_\-\. ]?)?key\s*[:=]\s*['"]?key-[0-9a-zA-Z]{32}['"]?"#,
             Severity::Critical),
 
-        // ── Hardcoded user home-directory paths ──────────────────────────────
+        // ── Hardcoded user home-directory paths ───────────────────────────────────
+        // Fires when a specific username is present in a path, revealing the
+        // local account name.  Bare parent dirs (/home, C:\Users) are not flagged.
         Rule::new("user-dir-path",
-            "Hardcoded user home-directory path (exposes local username / machine path)",
+            "Hardcoded user home-directory path (reveals local username)",
             r"(?:/(?:home|Users)/[A-Za-z0-9_.\-]+(?:/|$)|[A-Za-z]:\\[Uu]sers\\[A-Za-z0-9_.\-]+(?:\\|$))",
             Severity::Warning),
 

@@ -301,6 +301,30 @@ fn detects_unix_user_home_path() {
 }
 
 #[test]
+fn detects_bare_username_path() {
+    // /home/alice alone (no subpath) should still be flagged – the username is exposed.
+    let dir = TempDir::new().unwrap();
+    let path = write_file(&dir, "README.md", "Default home: /home/alice\n");
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(has_rule(&findings, "user-dir-path"), "/home/alice at EOL should be flagged");
+}
+
+#[test]
+fn user_dir_root_not_flagged() {
+    // Bare parent directories with no username should NOT fire.
+    let dir = TempDir::new().unwrap();
+    let path = write_file(&dir, "README.md",
+        "All user homes live under /home or under C:\\Users on Windows.\n");
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(!has_rule(&findings, "user-dir-path"),
+        "bare /home and C:\\Users without a username should not be flagged");
+}
+
+#[test]
 fn detects_macos_user_home_path() {
     let dir = TempDir::new().unwrap();
     let path = write_file(&dir, "README.md", "Copy to /Users/bob/Library/Application Support/MyApp/\n");
