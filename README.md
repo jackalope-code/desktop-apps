@@ -6,11 +6,17 @@
 * cargo install
 * cargo run
 
-### Build
+### Build CLI
 * git clone https://github.com/jackalope-code/desktop-apps
 * cd binary-view-edit/binrw-cli
 * cargo build
 * Use build in target directory
+
+# Run app with GUI in Tauri
+* cd into project directory
+* cd client
+* npm install
+* npm run tauri dev
 
 ### Test
 * cd into project directory
