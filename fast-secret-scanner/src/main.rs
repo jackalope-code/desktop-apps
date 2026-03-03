@@ -1,0 +1,252 @@
+use clap::Parser;
+use colored::Colorize;
+use fast_secret_scanner::{
+    patterns::{default_rules, user_rule},
+    scanner::{scan_directory, scan_git_history},
+    types::{Finding, Location, ScanConfig, Severity},
+};
+use std::path::PathBuf;
+
+/// Fast Secret Scanner – find credentials and secrets in source code and git history.
+///
+/// Examples:
+///   fss --git-dir .
+///   fss --gh-repo owner/repo --ignore vendor node_modules
+///   fss --git-dir . --no-history --json
+///   fss --git-dir . --pattern "mytoken_[A-Za-z0-9]{32}"
+#[derive(Parser, Debug)]
+#[command(name = "fss", version, about, max_term_width = 100)]
+struct Cli {
+    /// Scan a GitHub repository (e.g. owner/repo). Clones it to a temp directory.
+    #[arg(long, value_name = "OWNER/REPO", conflicts_with = "git_dir")]
+    gh_repo: Option<String>,
+
+    /// Scan a local git repository directory.
+    #[arg(long, value_name = "PATH", conflicts_with = "gh_repo")]
+    git_dir: Option<PathBuf>,
+
+    /// Skip git commit history scan (working tree only).
+    #[arg(long)]
+    no_history: bool,
+
+    /// Do not warn about hardcoded user home-directory paths (e.g. /home/user/… or C:\Users\user\…).
+    #[arg(long)]
+    keep_user_dir: bool,
+
+    /// Paths or directory names to ignore (can be specified multiple times).
+    #[arg(long, value_name = "PATH", num_args = 1.., action = clap::ArgAction::Append)]
+    ignore: Vec<PathBuf>,
+
+    /// Additional custom regex patterns to scan for (can be specified multiple times).
+    #[arg(long, value_name = "REGEX", num_args = 1.., action = clap::ArgAction::Append)]
+    pattern: Vec<String>,
+
+    /// Output findings as JSON instead of colored text.
+    #[arg(long)]
+    json: bool,
+
+    /// Minimum severity to report: warning | medium | high | critical  [default: warning]
+    #[arg(long, value_name = "LEVEL", default_value = "warning")]
+    min_severity: String,
+
+    /// GitHub token for cloning private repositories (GITHUB_TOKEN env var also works).
+    #[arg(long, value_name = "TOKEN", env = "GITHUB_TOKEN")]
+    token: Option<String>,
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // ── Build rules ────────────────────────────────────────────────────────
+    let mut rules = default_rules();
+    if cli.keep_user_dir {
+        rules.retain(|r| r.name != "user-dir-path");
+    }
+    for (i, pat) in cli.pattern.iter().enumerate() {
+        rules.push(user_rule(i, pat)?);
+    }
+
+    // ── Always add common ignores ──────────────────────────────────────────
+    let mut ignore = cli.ignore.clone();
+    for auto in ["node_modules", ".git", "target", "dist", "__pycache__", ".next"] {
+        ignore.push(PathBuf::from(auto));
+    }
+
+    let min_sev = parse_severity(&cli.min_severity)?;
+
+    let cfg = ScanConfig {
+        rules,
+        ignore,
+        scan_history: !cli.no_history,
+    };
+
+    // ── Resolve repo path ──────────────────────────────────────────────────
+    let (repo_path, _temp_dir) = if let Some(ref slug) = cli.gh_repo {
+        let td = clone_github_repo(slug, cli.token.as_deref())?;
+        let path = td.path().to_path_buf();
+        (path, Some(td))
+    } else if let Some(ref dir) = cli.git_dir {
+        let canonical = dir.canonicalize()
+            .unwrap_or_else(|_| dir.clone());
+        (canonical, None)
+    } else {
+        eprintln!("{}", "Error: provide --git-dir or --gh-repo".red().bold());
+        std::process::exit(1);
+    };
+
+    if !cli.json {
+        eprintln!("{} {}", "Scanning".cyan().bold(), repo_path.display());
+    }
+
+    let mut findings: Vec<Finding> = Vec::new();
+
+    // ── Working tree ───────────────────────────────────────────────────────
+    scan_directory(&repo_path, &cfg, &mut findings)?;
+
+    // ── Commit history ─────────────────────────────────────────────────────
+    if cfg.scan_history {
+        if !cli.json {
+            eprintln!("{}", "Scanning git commit history…".cyan());
+        }
+        match scan_git_history(&repo_path, &cfg, &mut findings) {
+            Ok(()) => {}
+            Err(e) => eprintln!("{} {}", "Warning: git history scan failed:".yellow(), e),
+        }
+    }
+
+    // ── Filter by severity ─────────────────────────────────────────────────
+    findings.retain(|f| f.severity >= min_sev);
+
+    // Deduplicate: same rule + same matched_text + same file
+    findings.dedup_by(|a, b| {
+        a.rule_name == b.rule_name
+            && a.matched_text == b.matched_text
+            && loc_key(&a.location) == loc_key(&b.location)
+    });
+
+    // ── Output ─────────────────────────────────────────────────────────────
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&findings)?);
+    } else {
+        print_findings(&findings);
+    }
+
+    // Exit code: 0 = no findings, 1 = findings found
+    if findings.is_empty() {
+        if !cli.json {
+            println!("{}", "No secrets found.".green().bold());
+        }
+        Ok(())
+    } else {
+        if !cli.json {
+            println!(
+                "\n{} {} finding(s) total.",
+                "⚠".yellow().bold(),
+                findings.len()
+            );
+        }
+        std::process::exit(1);
+    }
+}
+
+// ── Clone helper ──────────────────────────────────────────────────────────────
+
+fn clone_github_repo(slug: &str, token: Option<&str>) -> anyhow::Result<tempfile::TempDir> {
+    use git2::{RemoteCallbacks, FetchOptions};
+
+    let url = if slug.starts_with("https://") || slug.starts_with("git@") {
+        slug.to_string()
+    } else {
+        format!("https://github.com/{slug}.git")
+    };
+
+    eprintln!("{} {url}", "Cloning".cyan().bold());
+
+    let td = tempfile::tempdir()?;
+
+    let mut builder = git2::build::RepoBuilder::new();
+
+    if let Some(tok) = token {
+        let tok = tok.to_string();
+        let mut callbacks = RemoteCallbacks::new();
+        callbacks.credentials(move |_url, _username, _allowed| {
+            git2::Cred::userpass_plaintext("x-access-token", &tok)
+        });
+        let mut fetch_opts = FetchOptions::new();
+        fetch_opts.remote_callbacks(callbacks);
+        builder.fetch_options(fetch_opts);
+    }
+
+    builder
+        .clone(&url, td.path())
+        .map_err(|e| anyhow::anyhow!("failed to clone '{}': {}", url, e))?;
+
+    Ok(td)
+}
+
+// ── Severity parse helper ────────────────────────────────────────────────────
+
+fn parse_severity(s: &str) -> anyhow::Result<Severity> {
+    match s.to_ascii_lowercase().as_str() {
+        "warning"  | "warn" | "w" => Ok(Severity::Warning),
+        "medium"   | "med"  | "m" => Ok(Severity::Medium),
+        "high"     | "h"          => Ok(Severity::High),
+        "critical" | "crit" | "c" => Ok(Severity::Critical),
+        other => anyhow::bail!("unknown severity '{}'; use warning/medium/high/critical", other),
+    }
+}
+
+// ── Location key for dedup ────────────────────────────────────────────────────
+
+fn loc_key(loc: &Location) -> String {
+    match loc {
+        Location::File { path, line_no } => format!("file:{path}:{line_no}"),
+        Location::Commit { hash, file, .. } => format!("commit:{hash}:{file}"),
+    }
+}
+
+// ── Colored output ────────────────────────────────────────────────────────────
+
+fn severity_color(s: &Severity) -> colored::ColoredString {
+    match s {
+        Severity::Critical => format!("[{s}]").red().bold(),
+        Severity::High     => format!("[{s}]").yellow().bold(),
+        Severity::Medium   => format!("[{s}]").magenta(),
+        Severity::Warning  => format!("[{s}]").cyan(),
+    }
+}
+
+fn print_findings(findings: &[Finding]) {
+    for f in findings {
+        let sev = severity_color(&f.severity);
+        let rule = f.rule_name.bold();
+
+        match &f.location {
+            Location::File { path, line_no } => {
+                println!(
+                    "{sev} {rule}  {}:{}",
+                    path.blue(),
+                    line_no.to_string().dimmed(),
+                );
+            }
+            Location::Commit { short_hash, file, commit_message, .. } => {
+                println!(
+                    "{sev} {rule}  commit {} {}  {}",
+                    short_hash.yellow(),
+                    file.blue(),
+                    commit_message.dimmed(),
+                );
+            }
+        }
+        println!(
+            "      match:   {}",
+            f.matched_text.yellow()
+        );
+        println!(
+            "      line:    {}",
+            f.line_content.dimmed()
+        );
+        println!();
+    }
+}
+
