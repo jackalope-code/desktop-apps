@@ -1,4 +1,10 @@
 
+[![binary-view-edit](https://github.com/jackalope-code/desktop-apps/actions/workflows/binary-view-edit.yml/badge.svg?branch=main)](https://github.com/jackalope-code/desktop-apps/actions/workflows/binary-view-edit.yml)
+
+[![fast-secret-scanner](https://github.com/jackalope-code/desktop-apps/actions/workflows/fast-secret-scanner.yml/badge.svg)](https://github.com/jackalope-code/desktop-apps/actions/workflows/fast-secret-scanner.yml)
+
+[![filemon](https://github.com/jackalope-code/desktop-apps/actions/workflows/filemon.yml/badge.svg)](https://github.com/jackalope-code/desktop-apps/actions/workflows/filemon.yml)
+
 ## BinRW
 ### CLI development
 * git clone https://github.com/jackalope-code/desktop-apps
