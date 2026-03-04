@@ -197,7 +197,7 @@ fn main() -> anyhow::Result<()> {
 // ── Clone helper ──────────────────────────────────────────────────────────────
 
 fn clone_github_repo(slug: &str, token: Option<&str>) -> anyhow::Result<tempfile::TempDir> {
-    use git2::{RemoteCallbacks, FetchOptions};
+    use git2::{RemoteCallbacks, FetchOptions, Config};
 
     let url = if slug.starts_with("https://") || slug.starts_with("git@") {
         slug.to_string()
@@ -211,16 +211,44 @@ fn clone_github_repo(slug: &str, token: Option<&str>) -> anyhow::Result<tempfile
 
     let mut builder = git2::build::RepoBuilder::new();
 
-    if let Some(tok) = token {
-        let tok = tok.to_string();
-        let mut callbacks = RemoteCallbacks::new();
-        callbacks.credentials(move |_url, _username, _allowed| {
-            git2::Cred::userpass_plaintext("x-access-token", &tok)
-        });
-        let mut fetch_opts = FetchOptions::new();
-        fetch_opts.remote_callbacks(callbacks);
-        builder.fetch_options(fetch_opts);
-    }
+    let token_owned = token.map(|t| t.to_string());
+    let git_config = Config::open_default().ok();
+
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(move |url, username, allowed| {
+        // 1. Explicit token takes priority.
+        if let Some(ref tok) = token_owned {
+            return git2::Cred::userpass_plaintext("x-access-token", tok);
+        }
+        // 2. SSH agent (for git@ URLs).
+        if allowed.contains(git2::CredentialType::SSH_KEY) {
+            let user = username.unwrap_or("git");
+            if let Ok(c) = git2::Cred::ssh_key_from_agent(user) {
+                return Ok(c);
+            }
+        }
+        // 3. System credential helper (Windows Credential Manager, macOS keychain, etc.)
+        if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+            if let Some(ref cfg) = git_config {
+                if let Ok(c) = git2::Cred::credential_helper(cfg, url, username) {
+                    return Ok(c);
+                }
+            }
+        }
+        // 4. Default (Kerberos / NTLM / negotiate).
+        if allowed.contains(git2::CredentialType::DEFAULT) {
+            if let Ok(c) = git2::Cred::default() {
+                return Ok(c);
+            }
+        }
+        Err(git2::Error::from_str(
+            "authentication required – pass --token or set GITHUB_TOKEN",
+        ))
+    });
+
+    let mut fetch_opts = FetchOptions::new();
+    fetch_opts.remote_callbacks(callbacks);
+    builder.fetch_options(fetch_opts);
 
     builder
         .clone(&url, td.path())
