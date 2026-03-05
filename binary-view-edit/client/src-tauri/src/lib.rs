@@ -233,6 +233,27 @@ fn write_insert(
     Ok("OK".into())
 }
 
+/// Patch raw bytes into a file at a given offset.
+/// `bytes` is a JSON array of integers 0–255.
+/// Unlike write_overwrite, this accepts raw bytes directly (no string conversion).
+#[tauri::command]
+fn patch_bytes(path: String, offset: i64, bytes: Vec<u8>) -> Result<String, String> {
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    let size = meta.len();
+    let start = resolve_offset(offset, size as i64);
+    if start >= size {
+        return Err(format!("Offset 0x{:X} is past EOF ({})", start, size));
+    }
+    let write_len = bytes.len().min((size - start) as usize);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+    file.write_all(&bytes[..write_len]).map_err(|e| e.to_string())?;
+    Ok(format!("{} byte(s) patched at 0x{:X}", write_len, start))
+}
+
 /// Copy a file from src to dest.
 #[tauri::command]
 fn copy_file(src: String, dest: String) -> Result<String, String> {
@@ -344,6 +365,7 @@ pub fn run() {
             get_file_type,
             write_overwrite,
             write_insert,
+            patch_bytes,
             copy_file,
             scan_strings,
         ])

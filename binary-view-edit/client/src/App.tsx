@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import Toolbar from "./components/Toolbar";
-import HexViewer from "./components/HexViewer";
+import HexEditor, { type PendingEdits } from "./components/HexEditor";
 import RangeBar from "./components/RangeBar";
 import WriteModal from "./components/WriteModal";
 import StringsPanel from "./components/StringsPanel";
@@ -9,6 +9,7 @@ import {
   readBytes,
   writeOverwrite,
   writeInsert,
+  patchBytes,
   type FileInfo,
   type HexRow,
 } from "./api";
@@ -24,6 +25,7 @@ function App() {
   const [modal, setModal] = useState<"overwrite" | "insert" | null>(null);
   const [showStrings, setShowStrings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<PendingEdits>(new Map());
 
   // Load a page of hex data
   const loadRange = useCallback(
@@ -61,6 +63,55 @@ function App() {
     const start = Math.max(0, offset);
     const end = Math.min(start + PAGE_SIZE - 1, fileInfo.size - 1);
     loadRange(fileInfo.path, start, end);
+  }
+
+  // Record a single byte edit in the pending map
+  function handleCellEdit(absoluteOffset: number, newByte: number) {
+    setPendingEdits((prev) => {
+      const next = new Map(prev);
+      next.set(absoluteOffset, newByte);
+      return next;
+    });
+  }
+
+  // Flush all pending edits to disk (one patch_bytes call per contiguous run)
+  async function handleApplyEdits() {
+    if (!fileInfo || pendingEdits.size === 0) return;
+    try {
+      setError(null);
+      // Sort offsets and batch into contiguous runs
+      const offsets = Array.from(pendingEdits.keys()).sort((a, b) => a - b);
+      let runStart = offsets[0];
+      let runBytes: number[] = [pendingEdits.get(offsets[0])!];
+
+      async function flushRun() {
+        await patchBytes(fileInfo!.path, runStart, runBytes);
+      }
+
+      for (let i = 1; i < offsets.length; i++) {
+        if (offsets[i] === offsets[i - 1] + 1) {
+          runBytes.push(pendingEdits.get(offsets[i])!);
+        } else {
+          await flushRun();
+          runStart = offsets[i];
+          runBytes = [pendingEdits.get(offsets[i])!];
+        }
+      }
+      await flushRun();
+
+      setPendingEdits(new Map());
+      // Refresh view
+      const info = await openFile(fileInfo.path);
+      setFileInfo(info);
+      await loadRange(fileInfo.path, rangeStart, rangeEnd);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Discard all pending edits
+  function handleDiscardEdits() {
+    setPendingEdits(new Map());
   }
 
   // Handle write submission
@@ -112,6 +163,9 @@ function App() {
         onWriteClick={() => setModal("overwrite")}
         onInsertClick={() => setModal("insert")}
         onStringsClick={() => setShowStrings(true)}
+        pendingEditsCount={pendingEdits.size}
+        onApplyEdits={handleApplyEdits}
+        onDiscardEdits={handleDiscardEdits}
       />
 
       {fileInfo && (
@@ -130,11 +184,14 @@ function App() {
         </div>
       )}
 
-      <HexViewer
+      <HexEditor
         rows={rows}
         totalBytes={totalBytes}
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
+        filePath={fileInfo?.path ?? null}
+        pendingEdits={pendingEdits}
+        onCellEdit={handleCellEdit}
       />
 
       {modal && (

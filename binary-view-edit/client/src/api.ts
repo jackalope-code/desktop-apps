@@ -104,3 +104,15 @@ export async function scanStrings(
     minLength: minLength ?? null,
   });
 }
+
+/** Patch raw bytes into a file at the given offset.
+ *  `bytes` is an array of integers 0–255.
+ *  Returns a status string on success.
+ */
+export async function patchBytes(
+  path: string,
+  offset: number,
+  bytes: number[]
+): Promise<string> {
+  return invoke<string>("patch_bytes", { path, offset, bytes });
+}

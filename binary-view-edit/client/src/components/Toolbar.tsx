@@ -6,6 +6,9 @@ interface ToolbarProps {
   onWriteClick: () => void;
   onInsertClick: () => void;
   onStringsClick: () => void;
+  pendingEditsCount: number;
+  onApplyEdits: () => void;
+  onDiscardEdits: () => void;
 }
 
 export default function Toolbar({
@@ -14,6 +17,9 @@ export default function Toolbar({
   onWriteClick,
   onInsertClick,
   onStringsClick,
+  pendingEditsCount,
+  onApplyEdits,
+  onDiscardEdits,
 }: ToolbarProps) {
   async function handleOpen() {
     const selected = await open({
@@ -60,6 +66,29 @@ export default function Toolbar({
           >
             Strings
           </button>
+
+          {/* Pending edit controls */}
+          {pendingEditsCount > 0 && (
+            <>
+              <div className="mx-1 h-5 border-l border-gray-700" />
+              <span className="text-xs text-amber-400 font-medium">
+                {pendingEditsCount} unsaved byte
+                {pendingEditsCount !== 1 ? "s" : ""}
+              </span>
+              <button
+                onClick={onApplyEdits}
+                className="rounded bg-green-700 px-3 py-1 text-sm font-medium hover:bg-green-600 transition-colors"
+              >
+                Apply
+              </button>
+              <button
+                onClick={onDiscardEdits}
+                className="rounded bg-gray-700 px-3 py-1 text-sm font-medium hover:bg-gray-600 text-gray-300 transition-colors"
+              >
+                Discard
+              </button>
+            </>
+          )}
         </>
       )}
 

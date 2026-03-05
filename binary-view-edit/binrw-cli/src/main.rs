@@ -134,6 +134,30 @@ fn main() {
                         .help("Minimum string length (default: 4)"),
                 ),
         )
+        .subcommand(
+            Command::new("patch")
+                .about("Patch raw bytes at an offset; hex bytes may be space-separated or run-together")
+                .arg(
+                    Arg::new("filename")
+                        .required(true)
+                        .index(1)
+                        .help("Target file to patch"),
+                )
+                .arg(
+                    Arg::new("offset")
+                        .required(true)
+                        .index(2)
+                        .allow_hyphen_values(true)
+                        .help("Byte offset (decimal or 0x hex, negative = from end)"),
+                )
+                .arg(
+                    Arg::new("hex")
+                        .required(true)
+                        .index(3)
+                        .num_args(1..)
+                        .help("Hex bytes to write, e.g. DE AD BE EF  or  DEADBEEF"),
+                ),
+        )
         .get_matches();
 
     // ========== READ ==========
@@ -422,6 +446,65 @@ fn main() {
                 println!("0x{:08X}: {}", m.offset, m.value);
             }
         }
+
+    } else if let Some(patch_matches) = matches.subcommand_matches("patch") {
+        // ========== PATCH ==========
+        let filename = patch_matches.get_one::<String>("filename").unwrap();
+        let offset_str = patch_matches.get_one::<String>("offset").unwrap();
+        let hex_args: Vec<&str> = patch_matches
+            .get_many::<String>("hex")
+            .unwrap()
+            .map(|s| s.as_str())
+            .collect();
+
+        // Join all hex args and strip non-hex characters (spaces, colons, etc.)
+        let raw: String = hex_args.join("");
+        let clean: String = raw.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+        if clean.len() % 2 != 0 {
+            eprintln!("Error: hex bytes must have an even number of hex digits");
+            std::process::exit(1);
+        }
+        if clean.is_empty() {
+            eprintln!("Error: no hex bytes provided");
+            std::process::exit(1);
+        }
+        let bytes: Vec<u8> = clean
+            .as_bytes()
+            .chunks(2)
+            .map(|chunk| u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap())
+            .collect();
+
+        let file_size = std::fs::metadata(filename)
+            .expect("Error reading file metadata")
+            .len() as i64;
+        let offset = match parse_int_auto_i64(offset_str) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+        };
+        let start = resolve_offset(offset, file_size) as u64;
+        if start >= file_size as u64 {
+            eprintln!(
+                "Error: offset 0x{:X} is at or past EOF ({})",
+                start, file_size
+            );
+            std::process::exit(1);
+        }
+        let write_len = bytes.len().min((file_size as u64 - start) as usize);
+        use std::io::Seek;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .open(filename)
+            .expect("Error opening file for patching");
+        f.seek(std::io::SeekFrom::Start(start))
+            .expect("Error seeking in file");
+        f.write_all(&bytes[..write_len]).expect("Error writing bytes");
+        println!(
+            "Patched {} byte(s) at 0x{:X} in {}",
+            write_len, start, filename
+        );
 
     } else {
         println!("Command not recognized!");
