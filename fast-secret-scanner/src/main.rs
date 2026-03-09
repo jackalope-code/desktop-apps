@@ -56,6 +56,11 @@ struct Cli {
     /// GitHub token for cloning private repositories (GITHUB_TOKEN env var also works).
     #[arg(long, value_name = "TOKEN", env = "GITHUB_TOKEN")]
     token: Option<String>,
+
+    /// Suppress infrastructure-disclosure findings (IP addresses, internal hostnames,
+    /// public endpoints). Useful when those findings are expected/intentional.
+    #[arg(long)]
+    ignore_infrastructure: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -66,13 +71,25 @@ fn main() -> anyhow::Result<()> {
     if cli.keep_user_dir {
         rules.retain(|r| r.name != "user-dir-path");
     }
+    if cli.ignore_infrastructure {
+        rules.retain(|r| !r.infra);
+    }
     for (i, pat) in cli.pattern.iter().enumerate() {
         rules.push(user_rule(i, pat)?);
     }
 
     // ── Always add common ignores ──────────────────────────────────────────
     let mut ignore = cli.ignore.clone();
-    for auto in ["node_modules", ".git", "target", "dist", "__pycache__", ".next"] {
+    for auto in [
+        "node_modules",
+        ".git",
+        "target",
+        "dist",
+        "__pycache__",
+        ".next",
+        ".venv",
+        "venv",
+    ] {
         ignore.push(PathBuf::from(auto));
     }
 
@@ -84,8 +101,7 @@ fn main() -> anyhow::Result<()> {
         let path = td.path().to_path_buf();
         (path, Some(td))
     } else if let Some(ref dir) = cli.git_dir {
-        let canonical = dir.canonicalize()
-            .unwrap_or_else(|_| dir.clone());
+        let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
         (canonical, None)
     } else {
         eprintln!("{}", "Error: provide --git-dir or --gh-repo".red().bold());
@@ -146,10 +162,13 @@ fn main() -> anyhow::Result<()> {
             active_findings: Vec<Finding>,
             covered_by_gitignore: Vec<Finding>,
         }
-        println!("{}", serde_json::to_string_pretty(&JsonOutput {
-            active_findings: active.clone(),
-            covered_by_gitignore: covered.clone(),
-        })?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&JsonOutput {
+                active_findings: active.clone(),
+                covered_by_gitignore: covered.clone(),
+            })?
+        );
     } else {
         if !covered.is_empty() {
             print_covered_findings(&covered);
@@ -178,7 +197,10 @@ fn main() -> anyhow::Result<()> {
             let covered_note = if covered.is_empty() {
                 String::new()
             } else {
-                format!("  ({} additional finding(s) covered by .gitignore)", covered.len())
+                format!(
+                    "  ({} additional finding(s) covered by .gitignore)",
+                    covered.len()
+                )
             };
             println!(
                 "\n{} {} active finding(s) require attention.{}",
@@ -197,7 +219,7 @@ fn main() -> anyhow::Result<()> {
 // ── Clone helper ──────────────────────────────────────────────────────────────
 
 fn clone_github_repo(slug: &str, token: Option<&str>) -> anyhow::Result<tempfile::TempDir> {
-    use git2::{RemoteCallbacks, FetchOptions, Config};
+    use git2::{Config, FetchOptions, RemoteCallbacks};
 
     let url = if slug.starts_with("https://") || slug.starts_with("git@") {
         slug.to_string()
@@ -261,11 +283,14 @@ fn clone_github_repo(slug: &str, token: Option<&str>) -> anyhow::Result<tempfile
 
 fn parse_severity(s: &str) -> anyhow::Result<Severity> {
     match s.to_ascii_lowercase().as_str() {
-        "warning"  | "warn" | "w" => Ok(Severity::Warning),
-        "medium"   | "med"  | "m" => Ok(Severity::Medium),
-        "high"     | "h"          => Ok(Severity::High),
+        "warning" | "warn" | "w" => Ok(Severity::Warning),
+        "medium" | "med" | "m" => Ok(Severity::Medium),
+        "high" | "h" => Ok(Severity::High),
         "critical" | "crit" | "c" => Ok(Severity::Critical),
-        other => anyhow::bail!("unknown severity '{}'; use warning/medium/high/critical", other),
+        other => anyhow::bail!(
+            "unknown severity '{}'; use warning/medium/high/critical",
+            other
+        ),
     }
 }
 
@@ -283,9 +308,9 @@ fn loc_key(loc: &Location) -> String {
 fn severity_color(s: &Severity) -> colored::ColoredString {
     match s {
         Severity::Critical => format!("[{s}]").red().bold(),
-        Severity::High     => format!("[{s}]").yellow().bold(),
-        Severity::Medium   => format!("[{s}]").magenta(),
-        Severity::Warning  => format!("[{s}]").cyan(),
+        Severity::High => format!("[{s}]").yellow().bold(),
+        Severity::Medium => format!("[{s}]").magenta(),
+        Severity::Warning => format!("[{s}]").cyan(),
     }
 }
 
@@ -303,7 +328,9 @@ fn print_covered_findings(findings: &[Finding]) {
                     line_no.to_string().dimmed(),
                 );
             }
-            Location::Commit { short_hash, file, .. } => {
+            Location::Commit {
+                short_hash, file, ..
+            } => {
                 println!(
                     "{} {} {rule}  commit {} {}",
                     "✓".green().bold(),
@@ -332,7 +359,12 @@ fn print_findings(findings: &[Finding]) {
                     line_no.to_string().dimmed(),
                 );
             }
-            Location::Commit { short_hash, file, commit_message, .. } => {
+            Location::Commit {
+                short_hash,
+                file,
+                commit_message,
+                ..
+            } => {
                 println!(
                     "{sev} {rule}  commit {} {}  {}",
                     short_hash.yellow(),
@@ -341,15 +373,8 @@ fn print_findings(findings: &[Finding]) {
                 );
             }
         }
-        println!(
-            "      match:   {}",
-            f.matched_text.yellow()
-        );
-        println!(
-            "      line:    {}",
-            f.line_content.dimmed()
-        );
+        println!("      match:   {}", f.matched_text.yellow());
+        println!("      line:    {}", f.line_content.dimmed());
         println!();
     }
 }
-

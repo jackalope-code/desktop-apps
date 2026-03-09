@@ -119,6 +119,12 @@ fn scan_line(
             continue;
         }
         if let Some(mat) = rule.regex.find(line) {
+            // Skip if the line matches the rule's per-rule allowlist (false-positive suppression).
+            if let Some(ref al) = rule.allowlist_regex {
+                if al.is_match(line) {
+                    continue;
+                }
+            }
             let raw = mat.as_str();
             let (matched_text, line_content) = if redact {
                 let token = if raw.len() > 8 {

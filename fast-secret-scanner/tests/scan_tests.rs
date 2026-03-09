@@ -4,8 +4,9 @@
 //! default_rules, user_rule) against known-good and known-bad inputs.
 
 use fast_secret_scanner::{
-    apply_gitignore, default_rules, scan_directory, scan_file, user_rule,
+    apply_gitignore, default_rules, scan_directory, scan_file,
     types::{Finding, ScanConfig, Severity},
+    user_rule,
 };
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -64,11 +65,18 @@ impl FindingExt for Finding {
 #[test]
 fn detects_pem_private_key() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "key.pem", "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQ...\n-----END RSA PRIVATE KEY-----\n");
+    let path = write_file(
+        &dir,
+        "key.pem",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQ...\n-----END RSA PRIVATE KEY-----\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "private-key-pem"), "should detect PEM private key");
+    assert!(
+        has_rule(&findings, "private-key-pem"),
+        "should detect PEM private key"
+    );
 }
 
 #[test]
@@ -78,8 +86,14 @@ fn detects_openssh_private_key() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "ssh-private-key"), "should detect OpenSSH private key header");
-    assert!(has_rule(&findings, "private-key-pem"), "should also match PEM rule");
+    assert!(
+        has_rule(&findings, "ssh-private-key"),
+        "should detect OpenSSH private key header"
+    );
+    assert!(
+        has_rule(&findings, "private-key-pem"),
+        "should also match PEM rule"
+    );
 }
 
 // ── AWS ───────────────────────────────────────────────────────────────────────
@@ -87,21 +101,35 @@ fn detects_openssh_private_key() {
 #[test]
 fn detects_aws_access_key_id() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "config.py", "AWS_ACCESS_KEY_ID = \"AKIAIOSFODNN7EXAMPLE\"\n");
+    let path = write_file(
+        &dir,
+        "config.py",
+        "AWS_ACCESS_KEY_ID = \"AKIAIOSFODNN7EXAMPLE\"\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "aws-access-key-id"), "should detect AKIA... key");
+    assert!(
+        has_rule(&findings, "aws-access-key-id"),
+        "should detect AKIA... key"
+    );
 }
 
 #[test]
 fn detects_aws_secret_access_key() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "config.env", "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n");
+    let path = write_file(
+        &dir,
+        "config.env",
+        "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "aws-secret-access-key"), "should detect aws_secret_access_key");
+    assert!(
+        has_rule(&findings, "aws-secret-access-key"),
+        "should detect aws_secret_access_key"
+    );
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
@@ -109,11 +137,18 @@ fn detects_aws_secret_access_key() {
 #[test]
 fn detects_github_pat() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "deploy.sh", "TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n");
+    let path = write_file(
+        &dir,
+        "deploy.sh",
+        "TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "github-pat"), "should detect ghp_ token");
+    assert!(
+        has_rule(&findings, "github-pat"),
+        "should detect ghp_ token"
+    );
 }
 
 #[test]
@@ -123,7 +158,10 @@ fn detects_github_app_token() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "github-pat"), "should detect ghs_ token");
+    assert!(
+        has_rule(&findings, "github-pat"),
+        "should detect ghs_ token"
+    );
 }
 
 // ── Google ────────────────────────────────────────────────────────────────────
@@ -131,11 +169,18 @@ fn detects_github_app_token() {
 #[test]
 fn detects_google_api_key() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "index.js", "const key = 'AIzaSyD-9tSrke72I6sSSBJkLBMnMioAqsL3IYA';\n");
+    let path = write_file(
+        &dir,
+        "index.js",
+        "const key = 'AIzaSyD-9tSrke72I6sSSBJkLBMnMioAqsL3IYA';\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "google-api-key"), "should detect AIza... key");
+    assert!(
+        has_rule(&findings, "google-api-key"),
+        "should detect AIza... key"
+    );
 }
 
 // ── Stripe ────────────────────────────────────────────────────────────────────
@@ -143,23 +188,41 @@ fn detects_google_api_key() {
 #[test]
 fn detects_stripe_live_secret() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "payments.rb", "Stripe.api_key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12'\n");
+    let path = write_file(
+        &dir,
+        "payments.rb",
+        "Stripe.api_key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12'\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "stripe-live-secret"), "should detect sk_live_ key");
+    assert!(
+        has_rule(&findings, "stripe-live-secret"),
+        "should detect sk_live_ key"
+    );
 }
 
 #[test]
 fn detects_stripe_test_secret() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "test_payments.py", "api_key = 'sk_test_abcdefghijklmnopqrstuvwx'\n");
+    let path = write_file(
+        &dir,
+        "test_payments.py",
+        "api_key = 'sk_test_abcdefghijklmnopqrstuvwx'\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "stripe-test-secret"), "should detect sk_test_ key");
+    assert!(
+        has_rule(&findings, "stripe-test-secret"),
+        "should detect sk_test_ key"
+    );
     let stripe_findings = findings_for(&findings, "stripe-test-secret");
-    assert_eq!(stripe_findings[0].severity, Severity::Medium, "stripe test key should be Medium");
+    assert_eq!(
+        stripe_findings[0].severity,
+        Severity::Medium,
+        "stripe test key should be Medium"
+    );
 }
 
 // ── JWT ───────────────────────────────────────────────────────────────────────
@@ -182,21 +245,35 @@ fn detects_jwt_token() {
 #[test]
 fn detects_db_connection_string_postgres() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "db.go", r#"db, _ := sql.Open("postgres", "postgresql://admin:s3cr3tpassword@prod.example.com:5432/mydb")"#);
+    let path = write_file(
+        &dir,
+        "db.go",
+        r#"db, _ := sql.Open("postgres", "postgresql://admin:s3cr3tpassword@prod.example.com:5432/mydb")"#,
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "db-connection-string"), "should detect postgres:// connection string");
+    assert!(
+        has_rule(&findings, "db-connection-string"),
+        "should detect postgres:// connection string"
+    );
 }
 
 #[test]
 fn detects_db_connection_string_mongodb() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "app.js", "mongoose.connect('mongodb+srv://user:password123@cluster0.mongodb.net/mydb');");
+    let path = write_file(
+        &dir,
+        "app.js",
+        "mongoose.connect('mongodb+srv://user:password123@cluster0.mongodb.net/mydb');",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "db-connection-string"), "should detect mongodb+srv connection string");
+    assert!(
+        has_rule(&findings, "db-connection-string"),
+        "should detect mongodb+srv connection string"
+    );
 }
 
 // ── Generic patterns ──────────────────────────────────────────────────────────
@@ -204,11 +281,18 @@ fn detects_db_connection_string_mongodb() {
 #[test]
 fn detects_generic_api_key() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "config.ts", "const API_KEY = 'abcdefghijklmnopqrstuvwxyz1234567';\n");
+    let path = write_file(
+        &dir,
+        "config.ts",
+        "const API_KEY = 'abcdefghijklmnopqrstuvwxyz1234567';\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "generic-api-key"), "should detect generic api_key assignment");
+    assert!(
+        has_rule(&findings, "generic-api-key"),
+        "should detect generic api_key assignment"
+    );
 }
 
 #[test]
@@ -218,27 +302,44 @@ fn detects_generic_password() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "generic-password"), "should detect password assignment");
+    assert!(
+        has_rule(&findings, "generic-password"),
+        "should detect password assignment"
+    );
 }
 
 #[test]
 fn detects_generic_secret() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "app.config", "app_secret=my_super_long_secret_value_here\n");
+    let path = write_file(
+        &dir,
+        "app.config",
+        "app_secret=\"my_super_long_secret_value_here\"\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "generic-secret"), "should detect generic secret assignment");
+    assert!(
+        has_rule(&findings, "generic-secret"),
+        "should detect generic secret assignment"
+    );
 }
 
 #[test]
 fn detects_basic_auth_url() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "Makefile", "curl https://admin:password123@api.example.com/endpoint\n");
+    let path = write_file(
+        &dir,
+        "Makefile",
+        "curl https://admin:password123@api.example.com/endpoint\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "basic-auth-url"), "should detect http basic auth URL");
+    assert!(
+        has_rule(&findings, "basic-auth-url"),
+        "should detect http basic auth URL"
+    );
 }
 
 // ── .env file rules ───────────────────────────────────────────────────────────
@@ -251,17 +352,27 @@ fn env_any_only_triggers_on_env_files() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&rs_path, &cfg, &mut findings).unwrap();
-    assert!(!has_rule(&findings, "env-var-any"), "env-var-any should not trigger on .rs files");
+    assert!(
+        !has_rule(&findings, "env-var-any"),
+        "env-var-any should not trigger on .rs files"
+    );
 }
 
 #[test]
 fn env_any_triggers_on_dotenv_file() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, ".env", "DATABASE_URL=postgres://localhost/db\nDEBUG=true\n");
+    let path = write_file(
+        &dir,
+        ".env",
+        "DATABASE_URL=postgres://localhost/db\nDEBUG=true\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "env-var-any"), "env-var-any should trigger in .env file");
+    assert!(
+        has_rule(&findings, "env-var-any"),
+        "env-var-any should trigger in .env file"
+    );
 }
 
 #[test]
@@ -271,7 +382,10 @@ fn env_sensitive_triggers_for_secret_variable() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "env-var-sensitive"), "should flag API_SECRET as sensitive");
+    assert!(
+        has_rule(&findings, "env-var-sensitive"),
+        "should flag API_SECRET as sensitive"
+    );
     let sensitive = findings_for(&findings, "env-var-sensitive");
     assert_eq!(sensitive[0].severity, Severity::High);
 }
@@ -279,11 +393,18 @@ fn env_sensitive_triggers_for_secret_variable() {
 #[test]
 fn env_sensitive_triggers_for_password_variable() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, ".env.production", "DB_PASSWORD=my_prod_password_value\n");
+    let path = write_file(
+        &dir,
+        ".env.production",
+        "DB_PASSWORD=my_prod_password_value\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "env-var-sensitive"), "should flag DB_PASSWORD as sensitive");
+    assert!(
+        has_rule(&findings, "env-var-sensitive"),
+        "should flag DB_PASSWORD as sensitive"
+    );
 }
 
 // ── User directory path detection ─────────────────────────────────────────────
@@ -291,11 +412,18 @@ fn env_sensitive_triggers_for_password_variable() {
 #[test]
 fn detects_unix_user_home_path() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "config.py", "config_path = '/home/alice/projects/myapp/.config'\n");
+    let path = write_file(
+        &dir,
+        "config.py",
+        "config_path = '/home/alice/projects/myapp/.config'\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "user-dir-path"), "should detect /home/alice/ path");
+    assert!(
+        has_rule(&findings, "user-dir-path"),
+        "should detect /home/alice/ path"
+    );
     let user_findings = findings_for(&findings, "user-dir-path");
     assert_eq!(user_findings[0].severity, Severity::Warning);
 }
@@ -308,40 +436,62 @@ fn detects_bare_username_path() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "user-dir-path"), "/home/alice at EOL should be flagged");
+    assert!(
+        has_rule(&findings, "user-dir-path"),
+        "/home/alice at EOL should be flagged"
+    );
 }
 
 #[test]
 fn user_dir_root_not_flagged() {
     // Bare parent directories with no username should NOT fire.
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "README.md",
-        "All user homes live under /home or under C:\\Users on Windows.\n");
+    let path = write_file(
+        &dir,
+        "README.md",
+        "All user homes live under /home or under C:\\Users on Windows.\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(!has_rule(&findings, "user-dir-path"),
-        "bare /home and C:\\Users without a username should not be flagged");
+    assert!(
+        !has_rule(&findings, "user-dir-path"),
+        "bare /home and C:\\Users without a username should not be flagged"
+    );
 }
 
 #[test]
 fn detects_macos_user_home_path() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "README.md", "Copy to /Users/bob/Library/Application Support/MyApp/\n");
+    let path = write_file(
+        &dir,
+        "README.md",
+        "Copy to /Users/bob/Library/Application Support/MyApp/\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "user-dir-path"), "should detect /Users/bob/ path");
+    assert!(
+        has_rule(&findings, "user-dir-path"),
+        "should detect /Users/bob/ path"
+    );
 }
 
 #[test]
 fn detects_windows_user_home_path() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "setup.bat", "set CONFIG_DIR=C:\\Users\\charlie\\AppData\\\n");
+    let path = write_file(
+        &dir,
+        "setup.bat",
+        "set CONFIG_DIR=C:\\Users\\charlie\\AppData\\\n",
+    );
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "user-dir-path"), "should detect C:\\Users\\charlie\\ path");
+    assert!(
+        has_rule(&findings, "user-dir-path"),
+        "should detect C:\\Users\\charlie\\ path"
+    );
 }
 
 #[test]
@@ -351,7 +501,10 @@ fn keep_user_dir_suppresses_rule() {
     let cfg = cfg_without("user-dir-path");
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(!has_rule(&findings, "user-dir-path"), "user-dir-path should be suppressed when rule removed");
+    assert!(
+        !has_rule(&findings, "user-dir-path"),
+        "user-dir-path should be suppressed when rule removed"
+    );
 }
 
 // ── Binary / non-UTF-8 files are skipped ─────────────────────────────────────
@@ -364,7 +517,10 @@ fn skips_binary_extension_files() {
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(findings.is_empty(), "binary-extension file should be skipped");
+    assert!(
+        findings.is_empty(),
+        "binary-extension file should be skipped"
+    );
 }
 
 #[test]
@@ -387,11 +543,15 @@ fn scan_directory_finds_secrets_recursively() {
     std::fs::write(
         subdir.join("config.py"),
         "AWS_ACCESS_KEY_ID = \"AKIAIOSFODNN7EXAMPLE\"\n",
-    ).unwrap();
+    )
+    .unwrap();
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "aws-access-key-id"), "directory scan should find nested secrets");
+    assert!(
+        has_rule(&findings, "aws-access-key-id"),
+        "directory scan should find nested secrets"
+    );
 }
 
 #[test]
@@ -402,7 +562,8 @@ fn scan_directory_respects_ignore_list() {
     std::fs::write(
         vendor.join("secret.js"),
         "const key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12';\n",
-    ).unwrap();
+    )
+    .unwrap();
     let cfg = ScanConfig {
         rules: default_rules(),
         ignore: vec![PathBuf::from("vendor")],
@@ -412,7 +573,10 @@ fn scan_directory_respects_ignore_list() {
     };
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
-    assert!(!has_rule(&findings, "stripe-live-secret"), "vendor directory should be ignored");
+    assert!(
+        !has_rule(&findings, "stripe-live-secret"),
+        "vendor directory should be ignored"
+    );
 }
 
 #[test]
@@ -423,11 +587,15 @@ fn scan_directory_skips_git_dir() {
     std::fs::write(
         git_dir.join("COMMIT_EDITMSG"),
         "api_key: sk_live_51ABCDEFGHIJKLMNorstuvwxyz12\n",
-    ).unwrap();
+    )
+    .unwrap();
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
-    assert!(!has_rule(&findings, "stripe-live-secret"), ".git directory should be skipped");
+    assert!(
+        !has_rule(&findings, "stripe-live-secret"),
+        ".git directory should be skipped"
+    );
 }
 
 #[test]
@@ -436,12 +604,19 @@ fn scan_directory_finds_env_files() {
     std::fs::write(
         dir.path().join(".env"),
         "DB_PASSWORD=super_secret\nPORT=5432\n",
-    ).unwrap();
+    )
+    .unwrap();
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "env-var-any"), "should find env vars in .env file");
-    assert!(has_rule(&findings, "env-var-sensitive"), "should flag DB_PASSWORD as sensitive");
+    assert!(
+        has_rule(&findings, "env-var-any"),
+        "should find env vars in .env file"
+    );
+    assert!(
+        has_rule(&findings, "env-var-sensitive"),
+        "should flag DB_PASSWORD as sensitive"
+    );
 }
 
 // ── Custom user rules ─────────────────────────────────────────────────────────
@@ -449,7 +624,11 @@ fn scan_directory_finds_env_files() {
 #[test]
 fn custom_user_rule_matches() {
     let dir = TempDir::new().unwrap();
-    let path = write_file(&dir, "deploy.sh", "MYAPP_TOKEN=mytoken_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd\n");
+    let path = write_file(
+        &dir,
+        "deploy.sh",
+        "MYAPP_TOKEN=mytoken_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcd\n",
+    );
     let custom = user_rule(0, r"mytoken_[A-Za-z0-9]{40}").unwrap();
     let cfg = ScanConfig {
         rules: vec![custom],
@@ -460,8 +639,15 @@ fn custom_user_rule_matches() {
     };
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    assert!(has_rule(&findings, "custom-0"), "custom pattern should match");
-    assert_eq!(findings[0].severity, Severity::High, "custom rule should be High severity");
+    assert!(
+        has_rule(&findings, "custom-0"),
+        "custom pattern should match"
+    );
+    assert_eq!(
+        findings[0].severity,
+        Severity::High,
+        "custom rule should be High severity"
+    );
 }
 
 #[test]
@@ -494,7 +680,8 @@ fn all_findings_redacted_by_default() {
         assert!(
             f.matched_text.contains("[redacted]"),
             "matched_text should be redacted for rule '{}', got: '{}'",
-            f.rule_name, f.matched_text
+            f.rule_name,
+            f.matched_text
         );
         assert!(
             !f.line_content.contains(full_key),
@@ -516,7 +703,8 @@ fn warning_findings_also_redacted_by_default() {
     for f in &warn_findings {
         assert!(
             f.matched_text.contains("[redacted]"),
-            "warning findings should also be redacted by default, got: '{}'", f.matched_text
+            "warning findings should also be redacted by default, got: '{}'",
+            f.matched_text
         );
     }
 }
@@ -535,7 +723,10 @@ fn unredact_shows_full_values() {
     };
     let mut findings = vec![];
     scan_file(&path, &cfg, &mut findings).unwrap();
-    let aws: Vec<_> = findings.iter().filter(|f| f.rule_name == "aws-access-key-id").collect();
+    let aws: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_name == "aws-access-key-id")
+        .collect();
     assert!(!aws.is_empty(), "should find aws-access-key-id");
     for f in &aws {
         assert!(
@@ -559,20 +750,23 @@ fn gitignored_file_findings_are_marked_covered() {
     init_git_repo_with_gitignore(&dir, ".env\n");
 
     // .env is gitignored → finding should be covered
-    std::fs::write(
-        dir.path().join(".env"),
-        "DB_PASSWORD=super_secret_value\n",
-    ).unwrap();
+    std::fs::write(dir.path().join(".env"), "DB_PASSWORD=super_secret_value\n").unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let sensitive: Vec<_> = findings.iter().filter(|f| f.rule_name == "env-var-sensitive").collect();
+    let sensitive: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_name == "env-var-sensitive")
+        .collect();
     assert!(!sensitive.is_empty(), "should find env-var-sensitive");
     for f in &sensitive {
-        assert!(f.git_ignored, "finding in gitignored .env should have git_ignored=true");
+        assert!(
+            f.git_ignored,
+            "finding in gitignored .env should have git_ignored=true"
+        );
     }
 }
 
@@ -585,17 +779,24 @@ fn non_gitignored_file_findings_are_marked_active() {
     std::fs::write(
         dir.path().join("config.py"),
         "API_KEY = 'AIzaSyD-9tSrke72I6sSSBJkLBMnMioAqsL3IYA'\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let google: Vec<_> = findings.iter().filter(|f| f.rule_name == "google-api-key").collect();
+    let google: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_name == "google-api-key")
+        .collect();
     assert!(!google.is_empty(), "should find google-api-key");
     for f in &google {
-        assert!(!f.git_ignored, "finding in non-gitignored file should have git_ignored=false");
+        assert!(
+            !f.git_ignored,
+            "finding in non-gitignored file should have git_ignored=false"
+        );
     }
 }
 
@@ -608,11 +809,13 @@ fn mixed_findings_partition_correctly() {
     std::fs::write(
         dir.path().join(".env"),
         "DB_PASSWORD=ignored_secret_value\n",
-    ).unwrap();
+    )
+    .unwrap();
     std::fs::write(
         dir.path().join("config.js"),
         "const key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12';\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
@@ -620,16 +823,28 @@ fn mixed_findings_partition_correctly() {
     apply_gitignore(dir.path(), &mut findings);
 
     let (covered, active): (Vec<_>, Vec<_>) = findings.iter().partition(|f| f.git_ignored);
-    assert!(!covered.is_empty(), "should have covered findings from .env");
-    assert!(!active.is_empty(), "should have active findings from config.js");
+    assert!(
+        !covered.is_empty(),
+        "should have covered findings from .env"
+    );
+    assert!(
+        !active.is_empty(),
+        "should have active findings from config.js"
+    );
 
     // Stripe live key in config.js must be active (not gitignored)
     let stripe_active = active.iter().any(|f| f.rule_name == "stripe-live-secret");
-    assert!(stripe_active, "stripe-live-secret in config.js must be active");
+    assert!(
+        stripe_active,
+        "stripe-live-secret in config.js must be active"
+    );
 
     // env-var-sensitive from .env must be covered
     let env_covered = covered.iter().any(|f| f.rule_name == "env-var-sensitive");
-    assert!(env_covered, "env-var-sensitive from gitignored .env must be covered");
+    assert!(
+        env_covered,
+        "env-var-sensitive from gitignored .env must be covered"
+    );
 }
 
 #[test]
@@ -642,11 +857,13 @@ fn all_covered_means_zero_active() {
     std::fs::write(
         dir.path().join(".env"),
         "API_SECRET=some_long_secret_value\n",
-    ).unwrap();
+    )
+    .unwrap();
     std::fs::write(
         dir.path().join("secrets").join("keys.txt"),
         "GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
@@ -674,17 +891,27 @@ fn wildcard_gitignore_pattern_covers_env_files() {
     std::fs::write(
         dir.path().join(".env.production"),
         "API_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV0123456\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let github_findings: Vec<_> = findings.iter().filter(|f| f.rule_name == "github-pat").collect();
-    assert!(!github_findings.is_empty(), "should find github-pat in .env.production");
+    let github_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_name == "github-pat")
+        .collect();
+    assert!(
+        !github_findings.is_empty(),
+        "should find github-pat in .env.production"
+    );
     for f in &github_findings {
-        assert!(f.git_ignored, ".env.production matched by .env* should be git_ignored");
+        assert!(
+            f.git_ignored,
+            ".env.production matched by .env* should be git_ignored"
+        );
     }
 }
 
@@ -695,17 +922,24 @@ fn non_git_directory_all_findings_are_active() {
     std::fs::write(
         dir.path().join("secret.js"),
         "const key = 'sk_live_51ABCDEFGHIJKLMNorstuvwxyz12';\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings); // no-op: no git repo
 
-    let stripe: Vec<_> = findings.iter().filter(|f| f.rule_name == "stripe-live-secret").collect();
+    let stripe: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_name == "stripe-live-secret")
+        .collect();
     assert!(!stripe.is_empty(), "should find stripe-live-secret");
     for f in &stripe {
-        assert!(!f.git_ignored, "without a git repo, findings should not be marked git_ignored");
+        assert!(
+            !f.git_ignored,
+            "without a git repo, findings should not be marked git_ignored"
+        );
     }
 }
 
@@ -745,18 +979,29 @@ fn subdir_gitignore_covers_files_in_that_subdir() {
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let api_findings: Vec<_> = findings.iter()
+    let api_findings: Vec<_> = findings
+        .iter()
         .filter(|f| f.location_path().map_or(false, |p| p.contains("api")))
         .collect();
-    let web_findings: Vec<_> = findings.iter()
+    let web_findings: Vec<_> = findings
+        .iter()
         .filter(|f| f.location_path().map_or(false, |p| p.contains("web")))
         .collect();
 
-    assert!(!api_findings.is_empty(), "should find secrets in packages/api");
+    assert!(
+        !api_findings.is_empty(),
+        "should find secrets in packages/api"
+    );
     for f in &api_findings {
-        assert!(f.git_ignored, "packages/api/.env covered by subdir .gitignore → git_ignored");
+        assert!(
+            f.git_ignored,
+            "packages/api/.env covered by subdir .gitignore → git_ignored"
+        );
     }
-    assert!(!web_findings.is_empty(), "should find secrets in packages/web");
+    assert!(
+        !web_findings.is_empty(),
+        "should find secrets in packages/web"
+    );
     for f in &web_findings {
         assert!(!f.git_ignored, "packages/web/.env has no coverage → active");
     }
@@ -777,12 +1022,19 @@ fn root_gitignore_covers_files_in_nested_subdirs() {
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let env_findings: Vec<_> = findings.iter()
+    let env_findings: Vec<_> = findings
+        .iter()
         .filter(|f| f.rule_name == "env-var-sensitive")
         .collect();
-    assert!(!env_findings.is_empty(), "should find env-var-sensitive in nested .env");
+    assert!(
+        !env_findings.is_empty(),
+        "should find env-var-sensitive in nested .env"
+    );
     for f in &env_findings {
-        assert!(f.git_ignored, "deeply nested .env covered by root **/.env rule");
+        assert!(
+            f.git_ignored,
+            "deeply nested .env covered by root **/.env rule"
+        );
     }
 }
 
@@ -796,8 +1048,16 @@ fn root_and_subdir_gitignores_both_apply() {
     let payments = dir.path().join("packages").join("payments");
     std::fs::create_dir_all(&payments).unwrap();
     std::fs::write(payments.join(".gitignore"), ".env\n").unwrap();
-    std::fs::write(payments.join(".env"), "STRIPE_SECRET=sk_live_51ABCDEFGHIJKLMNorstuvwxyz12\n").unwrap();
-    std::fs::write(payments.join("signing.key"), "private-key = AKIAIOSFODNN7EXAMPLE\n").unwrap();
+    std::fs::write(
+        payments.join(".env"),
+        "STRIPE_SECRET=sk_live_51ABCDEFGHIJKLMNorstuvwxyz12\n",
+    )
+    .unwrap();
+    std::fs::write(
+        payments.join("signing.key"),
+        "private-key = AKIAIOSFODNN7EXAMPLE\n",
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
@@ -805,16 +1065,28 @@ fn root_and_subdir_gitignores_both_apply() {
     apply_gitignore(dir.path(), &mut findings);
 
     // .env covered by packages/payments/.gitignore
-    let env_covered = findings.iter()
+    let env_covered = findings
+        .iter()
         .filter(|f| f.rule_name == "stripe-live-secret" && f.git_ignored)
         .count();
-    assert!(env_covered > 0, "stripe secret in .env should be covered by subdir .gitignore");
+    assert!(
+        env_covered > 0,
+        "stripe secret in .env should be covered by subdir .gitignore"
+    );
 
     // .key file covered by root .gitignore
-    let key_covered = findings.iter()
-        .filter(|f| f.location_path().map_or(false, |p| p.ends_with("signing.key")) && f.git_ignored)
+    let key_covered = findings
+        .iter()
+        .filter(|f| {
+            f.location_path()
+                .map_or(false, |p| p.ends_with("signing.key"))
+                && f.git_ignored
+        })
         .count();
-    assert!(key_covered > 0, "signing.key should be covered by root *.key rule");
+    assert!(
+        key_covered > 0,
+        "signing.key should be covered by root *.key rule"
+    );
 }
 
 #[test]
@@ -840,11 +1112,15 @@ fn subdir_gitignore_negation_uncovers_root_rule() {
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let public_findings: Vec<_> = findings.iter()
+    let public_findings: Vec<_> = findings
+        .iter()
         .filter(|f| f.location_path().map_or(false, |p| p.contains("public")))
         .collect();
 
-    assert!(!public_findings.is_empty(), "should find env vars in packages/public/.env");
+    assert!(
+        !public_findings.is_empty(),
+        "should find env vars in packages/public/.env"
+    );
     // libgit2 limitation: the root ".env" rule wins; subdir "!.env" negation is
     // not applied. All findings remain marked as git_ignored = true.
     // If this assertion ever fails it means libgit2 was fixed and we can
@@ -865,23 +1141,32 @@ fn each_package_gitignore_is_scoped_to_its_subtree() {
     for pkg in ["a", "b", "c"] {
         let p = dir.path().join("packages").join(pkg);
         std::fs::create_dir_all(&p).unwrap();
-        std::fs::write(p.join(".env"), format!("TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV{pkg}0123456\n")).unwrap();
+        std::fs::write(
+            p.join(".env"),
+            format!("TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuV{pkg}0123456\n"),
+        )
+        .unwrap();
     }
     // Only package a ignores it
     std::fs::write(
         dir.path().join("packages").join("a").join(".gitignore"),
         ".env\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     let cfg = default_cfg();
     let mut findings = vec![];
     scan_directory(dir.path(), &cfg, &mut findings).unwrap();
     apply_gitignore(dir.path(), &mut findings);
 
-    let pat_findings: Vec<_> = findings.iter()
+    let pat_findings: Vec<_> = findings
+        .iter()
         .filter(|f| f.rule_name == "github-pat")
         .collect();
-    assert!(!pat_findings.is_empty(), "should find github-pat in all packages");
+    assert!(
+        !pat_findings.is_empty(),
+        "should find github-pat in all packages"
+    );
 
     for f in &pat_findings {
         let path = f.location_path().unwrap_or("");
@@ -890,7 +1175,260 @@ fn each_package_gitignore_is_scoped_to_its_subtree() {
         if in_a {
             assert!(f.git_ignored, "packages/a/.env should be covered");
         } else {
-            assert!(!f.git_ignored, "packages/b and packages/c .env should be active");
+            assert!(
+                !f.git_ignored,
+                "packages/b and packages/c .env should be active"
+            );
         }
     }
+}
+
+// ── False-positive regression tests ──────────────────────────────────────────
+
+#[test]
+fn basic_auth_url_ignores_google_fonts_cdn() {
+    // Google Fonts CDN URLs like ?family=Foo:wght@300 contain `:wght` (looks
+    // like a username) and `@300` (looks like a host) but there is a `/` in
+    // the URL path before the colon, so the fixed regex won't match.
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "styles.css",
+        r#"@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');"#,
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        !has_rule(&findings, "basic-auth-url"),
+        "Google Fonts CDN URLs should not be flagged as basic-auth-url"
+    );
+}
+
+#[test]
+fn basic_auth_url_flags_real_credentials() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "config.js",
+        r#"const dbUrl = "https://admin:supersecretpassword@db.example.com/mydb";"#,
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "basic-auth-url"),
+        "real username:password@host credentials should be flagged"
+    );
+}
+
+#[test]
+fn generic_password_ignores_typescript_type_annotation() {
+    // TypeScript function param `password: string` should not be flagged.
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "auth.ts",
+        "async function validatePassword(password: string): Promise<boolean> { return true; }\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        !has_rule(&findings, "generic-password"),
+        "TypeScript type annotation `password: string` should not fire generic-password"
+    );
+}
+
+#[test]
+fn generic_password_flags_hardcoded_value() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "config.py",
+        "password = \"hunter2secure\"\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "generic-password"),
+        "hardcoded password value should still be flagged"
+    );
+}
+
+// ── Infrastructure disclosure tests ──────────────────────────────────────────
+
+#[test]
+fn infra_flags_nonloopback_ipv4() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "db.rs",
+        r#"let addr = "192.168.1.50:5432";"#,
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "infra-ipv4-address"),
+        "non-loopback IPv4 should be flagged by infra-ipv4-address"
+    );
+}
+
+#[test]
+fn infra_ignores_loopback_ipv4() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "server.rs",
+        r#"let addr = "127.0.0.1:8080";"#,
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        !has_rule(&findings, "infra-ipv4-address"),
+        "loopback 127.0.0.1 should not be flagged"
+    );
+}
+
+#[test]
+fn infra_flags_internal_hostname() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "config.yaml",
+        "database_host: db-primary.internal\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "infra-internal-hostname"),
+        "internal hostname should be flagged"
+    );
+}
+
+#[test]
+fn infra_suppressed_by_ignore_infrastructure_flag() {
+    // Simulate --ignore-infrastructure by filtering infra rules out of the config.
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "db.rs",
+        r#"let addr = "172.16.0.1:3306";"#,
+    );
+    let mut cfg = default_cfg();
+    cfg.rules.retain(|r| !r.infra);
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        !has_rule(&findings, "infra-ipv4-address"),
+        "infra rules should be suppressed when filtered out"
+    );
+}
+
+// ── New API key rule tests ────────────────────────────────────────────────────
+
+#[test]
+fn detects_openai_api_key() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        ".env",
+        "OPENAI_API_KEY=sk-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij123456\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "openai-api-key"),
+        "OpenAI API key should be detected"
+    );
+}
+
+#[test]
+fn detects_anthropic_api_key() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        ".env",
+        "ANTHROPIC_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJ\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "anthropic-api-key"),
+        "Anthropic API key should be detected"
+    );
+}
+
+#[test]
+fn detects_linear_api_key() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "config.js",
+        "const client = new LinearClient({ apiKey: 'lin_api_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr' });\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "linear-api-key"),
+        "Linear API key should be detected"
+    );
+}
+
+#[test]
+fn detects_notion_integration_token() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        ".env",
+        "NOTION_TOKEN=secret_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "notion-token"),
+        "Notion integration token should be detected"
+    );
+}
+
+#[test]
+fn detects_digitalocean_token() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        ".env",
+        "DO_TOKEN=dop_v1_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz123456789012\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "digitalocean-token"),
+        "DigitalOcean personal access token should be detected"
+    );
+}
+
+#[test]
+fn detects_sentry_dsn() {
+    let dir = TempDir::new().unwrap();
+    let path = write_file(
+        &dir,
+        "config.js",
+        "Sentry.init({ dsn: 'https://abcdef1234567890abcdef1234567890@o123456.ingest.sentry.io/9876543' });\n",
+    );
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_file(&path, &cfg, &mut findings).unwrap();
+    assert!(
+        has_rule(&findings, "sentry-dsn"),
+        "Sentry DSN should be detected"
+    );
 }
