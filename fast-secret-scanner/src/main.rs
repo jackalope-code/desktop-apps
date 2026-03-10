@@ -2,7 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 use fast_secret_scanner::{
     patterns::{default_rules, user_rule},
-    scanner::{apply_gitignore, load_fssignore, scan_directory, scan_git_history},
+    scanner::{apply_gitignore, load_fssignore, scan_directory, scan_git_history, scan_staged},
     types::{Finding, Location, ScanConfig, Severity},
 };
 use std::path::PathBuf;
@@ -61,6 +61,18 @@ struct Cli {
     /// public endpoints). Useful when those findings are expected/intentional.
     #[arg(long)]
     ignore_infrastructure: bool,
+
+    /// Scan only staged (git-indexed) changes instead of the full working tree.
+    /// Designed for use as a git pre-commit hook. Requires --git-dir.
+    /// Exits with code 1 if any findings meet the --min-severity threshold.
+    #[arg(long, conflicts_with = "gh_repo")]
+    staged: bool,
+
+    /// Write a pre-commit hook script to <git-dir>/.git/hooks/pre-commit and exit.
+    /// The hook runs `fss --staged` automatically on every `git commit`.
+    /// Requires --git-dir.  Existing hook files are overwritten.
+    #[arg(long, conflicts_with = "gh_repo")]
+    install_hook: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -112,6 +124,34 @@ fn main() -> anyhow::Result<()> {
         eprintln!("{} {}", "Scanning".cyan().bold(), repo_path.display());
     }
 
+    // ── Install pre-commit hook ─────────────────────────────────────────────────────
+    if cli.install_hook {
+        let hook_dir = repo_path.join(".git").join("hooks");
+        let hook_path = hook_dir.join("pre-commit");
+        std::fs::create_dir_all(&hook_dir)?;
+        let script = concat!(
+            "#!/bin/sh\n",
+            "# Installed by: fss --install-hook\n",
+            "# Requires 'fss' on PATH: cargo install fast-secret-scanner\n",
+            "fss --staged --git-dir \"$(git rev-parse --show-toplevel)\" --min-severity high\n",
+        );
+        std::fs::write(&hook_path, script)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook_path, std::fs::Permissions::from_mode(0o755))?;
+        }
+        if !cli.json {
+            eprintln!(
+                "{} {}",
+                "✓ Pre-commit hook installed:".green().bold(),
+                hook_path.display()
+            );
+            eprintln!("  Every 'git commit' will now run: fss --staged --min-severity high");
+        }
+        return Ok(());
+    }
+
     let cfg = ScanConfig {
         rules,
         ignore,
@@ -122,17 +162,25 @@ fn main() -> anyhow::Result<()> {
 
     let mut findings: Vec<Finding> = Vec::new();
 
-    // ── Working tree ───────────────────────────────────────────────────────
-    scan_directory(&repo_path, &cfg, &mut findings)?;
-
-    // ── Commit history ─────────────────────────────────────────────────────
-    if cfg.scan_history {
+    if cli.staged {
+        // ── Staged changes only (pre-commit hook mode) ───────────────────────────
         if !cli.json {
-            eprintln!("{}", "Scanning git commit history…".cyan());
+            eprintln!("{}", "Scanning staged changes…".cyan());
         }
-        match scan_git_history(&repo_path, &cfg, &mut findings) {
-            Ok(()) => {}
-            Err(e) => eprintln!("{} {}", "Warning: git history scan failed:".yellow(), e),
+        scan_staged(&repo_path, &cfg, &mut findings)?;
+    } else {
+        // ── Working tree ────────────────────────────────────────────────────
+        scan_directory(&repo_path, &cfg, &mut findings)?;
+
+        // ── Commit history ────────────────────────────────────────────────
+        if cfg.scan_history {
+            if !cli.json {
+                eprintln!("{}", "Scanning git commit history…".cyan());
+            }
+            match scan_git_history(&repo_path, &cfg, &mut findings) {
+                Ok(()) => {}
+                Err(e) => eprintln!("{} {}", "Warning: git history scan failed:".yellow(), e),
+            }
         }
     }
 
@@ -149,7 +197,11 @@ fn main() -> anyhow::Result<()> {
     // ── Check .gitignore coverage (file findings only) ─────────────────────
     // Commit-history findings are *never* considered covered — the secret is
     // already baked into the git object store and .gitignore cannot protect it.
-    apply_gitignore(&repo_path, &mut findings);
+    // Staged-mode findings are also treated as uncovered: the whole point is to
+    // catch secrets before they enter the tracking system.
+    if !cli.staged {
+        apply_gitignore(&repo_path, &mut findings);
+    }
 
     // Partition: actively-exposed secrets vs. safely .gitignore'd
     let (covered, active): (Vec<Finding>, Vec<Finding>) =

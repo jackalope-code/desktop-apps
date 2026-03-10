@@ -4,7 +4,7 @@
 //! default_rules, user_rule) against known-good and known-bad inputs.
 
 use fast_secret_scanner::{
-    apply_gitignore, default_rules, scan_directory, scan_file,
+    apply_gitignore, default_rules, scan_directory, scan_file, scan_staged,
     types::{Finding, ScanConfig, Severity},
     user_rule,
 };
@@ -1430,5 +1430,113 @@ fn detects_sentry_dsn() {
     assert!(
         has_rule(&findings, "sentry-dsn"),
         "Sentry DSN should be detected"
+    );
+}
+
+// ── Staged-file (pre-commit) scan tests ──────────────────────────────────────────
+
+/// Stage a single file into the given repo's index.
+fn stage_file(repo: &git2::Repository, filename: &str) {
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new(filename)).unwrap();
+    index.write().unwrap();
+}
+
+#[test]
+fn staged_scan_finds_secret_in_index() {
+    // A staged file containing a fake GitHub PAT must be detected.
+    let dir = TempDir::new().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    write_file(&dir, "secrets.env", "TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ12345678\n");
+    stage_file(&repo, "secrets.env");
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_staged(dir.path(), &cfg, &mut findings).unwrap();
+
+    assert!(
+        has_rule(&findings, "github-pat"),
+        "staged github-pat should be detected"
+    );
+}
+
+#[test]
+fn staged_scan_ignores_unstaged_changes() {
+    // A file on disk but not in the index must NOT appear in staged findings.
+    let dir = TempDir::new().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+
+    // Stage an innocent file.
+    write_file(&dir, "readme.txt", "hello world\n");
+    stage_file(&repo, "readme.txt");
+
+    // Write a secret file but do NOT add it to the index.
+    write_file(&dir, "secrets.env", "TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ99999999\n");
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_staged(dir.path(), &cfg, &mut findings).unwrap();
+
+    assert!(
+        !has_rule(&findings, "github-pat"),
+        "unstaged secret file must not appear in staged scan"
+    );
+}
+
+#[test]
+fn staged_scan_clean_on_empty_index() {
+    // An empty index produces no findings.
+    let dir = TempDir::new().unwrap();
+    let _repo = git2::Repository::init(dir.path()).unwrap();
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_staged(dir.path(), &cfg, &mut findings).unwrap();
+
+    assert!(findings.is_empty(), "empty staged index should yield no findings");
+}
+
+#[test]
+fn staged_scan_picks_up_new_lines_after_initial_commit() {
+    // After an initial commit, only the *newly staged* lines (delta vs HEAD)
+    // should appear in findings — not lines from the committed baseline.
+    use git2::Signature;
+
+    let dir = TempDir::new().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+
+    // Initial commit: innocent file.
+    write_file(&dir, "app.js", "console.log('hello');\n");
+    stage_file(&repo, "app.js");
+    let mut index = repo.index().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    let sig = Signature::now("Test", "test@example.com").unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[]).unwrap();
+
+    // Now stage a new file that contains a fake AWS key.
+    write_file(
+        &dir,
+        "config.js",
+        "const key = 'AKIAIOSFODNN7EXAMPLE';\n",
+    );
+    stage_file(&repo, "config.js");
+
+    let cfg = default_cfg();
+    let mut findings = vec![];
+    scan_staged(dir.path(), &cfg, &mut findings).unwrap();
+
+    assert!(
+        has_rule(&findings, "aws-access-key-id"),
+        "newly staged AWS key should be flagged"
+    );
+    // The innocent committed file should NOT contribute findings.
+    let file_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.location_path().map_or(false, |p| p.contains("app.js")))
+        .collect();
+    assert!(
+        file_findings.is_empty(),
+        "previously committed innocent file must not appear in staged scan"
     );
 }

@@ -381,3 +381,100 @@ pub fn scan_git_history(repo_path: &Path, cfg: &ScanConfig, findings: &mut Vec<F
 
     Ok(())
 }
+
+// ── Staged-only scanner (pre-commit hook mode) ───────────────────────────────────
+
+/// Scan only the changes currently staged in the git index — i.e. exactly what
+/// would be committed if you ran `git commit` right now.  Designed for use as
+/// a git `pre-commit` hook via `fss --staged --git-dir .`.
+///
+/// Findings carry `Location::File` with the staged file path and the exact
+/// line number as reported by the diff hunk.
+pub fn scan_staged(
+    repo_path: &Path,
+    cfg: &ScanConfig,
+    findings: &mut Vec<Finding>,
+) -> anyhow::Result<()> {
+    use git2::{DiffFormat, DiffOptions, Repository};
+
+    let repo = Repository::open(repo_path)
+        .with_context(|| format!("failed to open git repo at {}", repo_path.display()))?;
+
+    let mut index = repo.index()?;
+    index.read(true)?; // refresh index from disk
+
+    // Staged diff = index vs HEAD tree.  For the initial commit (no HEAD yet)
+    // we diff against the empty tree so all staged lines are included.
+    let mut diff_opts = DiffOptions::new();
+    diff_opts.context_lines(0).ignore_whitespace(false);
+
+    let diff = match repo.head() {
+        Ok(head_ref) => {
+            let head_tree = head_ref.peel_to_tree()?;
+            repo.diff_tree_to_index(Some(&head_tree), Some(&index), Some(&mut diff_opts))?
+        }
+        Err(_) => {
+            // No commits yet — diff empty tree vs index.
+            repo.diff_tree_to_index(None, Some(&index), Some(&mut diff_opts))?
+        }
+    };
+
+    let mut local: Vec<Finding> = Vec::new();
+    let rules = &cfg.rules;
+    let ignored = &cfg.ignore;
+
+    diff.print(DiffFormat::Patch, |delta, _hunk, line| {
+        // Only inspect added lines.
+        if line.origin() != '+' {
+            return true;
+        }
+        let content = match std::str::from_utf8(line.content()) {
+            Ok(s) => s.trim_end_matches('\n').trim_end_matches('\r'),
+            Err(_) => return true,
+        };
+
+        let file_path = delta
+            .new_file()
+            .path()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // Skip ignored paths (same logic as scan_git_history).
+        let path_obj = std::path::PathBuf::from(&file_path);
+        for ign in ignored {
+            if path_obj.starts_with(ign) {
+                return true;
+            }
+            for comp in path_obj.components() {
+                if std::path::Path::new(comp.as_os_str()) == ign.as_path() {
+                    return true;
+                }
+            }
+        }
+        if matches_fssignore(&file_path, &cfg.fssignore) {
+            return true;
+        }
+
+        let line_no = line.new_lineno().map(|n| n as usize).unwrap_or(0);
+        let env_file = is_env_file(Path::new(&file_path));
+        let fp = file_path.clone();
+
+        scan_line(
+            content,
+            line_no,
+            rules,
+            env_file,
+            cfg.redact,
+            move |ln| Location::File {
+                path: fp.clone(),
+                line_no: ln,
+            },
+            &mut local,
+        );
+        true
+    })
+    .ok();
+
+    findings.extend(local);
+    Ok(())
+}

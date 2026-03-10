@@ -8,5 +8,5 @@ pub mod scanner;
 pub mod types;
 
 pub use patterns::{default_rules, user_rule, Rule};
-pub use scanner::{apply_gitignore, is_git_ignored, load_fssignore, scan_directory, scan_file, scan_git_history};
+pub use scanner::{apply_gitignore, is_git_ignored, load_fssignore, scan_directory, scan_file, scan_git_history, scan_staged};
 pub use types::{Finding, Location, ScanConfig, Severity};

@@ -95,6 +95,12 @@ pub fn default_rules() -> Vec<Rule> {
             r"(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,255}",
             Severity::Critical,
         ),
+        Rule::new(
+            "github-oauth-client-id",
+            "GitHub OAuth App client ID (Ov23li format)",
+            r"\bOv23li[A-Za-z0-9]{14}\b",
+            Severity::High,
+        ),
         // ── Google ───────────────────────────────────────────────────────────
         Rule::new(
             "google-api-key",
@@ -314,7 +320,11 @@ pub fn default_rules() -> Vec<Rule> {
             "Non-loopback IPv4 address (potential infrastructure disclosure)",
             r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b",
             Severity::Warning,
-        ).with_allowlist(r"\b(?:127\.0\.0\.1|0\.0\.0\.0|255\.255\.255\.255)\b"),
+        ).with_allowlist(
+            // Exclude loopback/broadcast; browser User-Agent version strings (Chrome/123.0.0.0);
+            // and SVG path coordinate data (<path d="...").
+            r#"(?:\b(?:127\.0\.0\.1|0\.0\.0\.0|255\.255\.255\.255)\b|(?:Chrome|Firefox|Safari|Edge|Version)/\d|KHTML|<path\b|\bd="[A-Za-z0-9]|viewBox)"#
+        ),
         Rule::infra_rule(
             "infra-internal-hostname",
             "Internal hostname pattern (e.g. service.internal, service.corp)",
